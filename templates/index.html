@@ -13,11 +13,16 @@
       --muted: #6d7d76;
       --paper: #f5f2e9;
       --white: #fffdf8;
-      --leaf: #175d43;
-      --mint: #dcebdd;
+      --leaf: #388e3c;
+      --leaf-secondary: #558b2f;
+      --leaf-tertiary: #8bc34a;
+      --mint: #e7f2df;
       --line: #d5ded5;
       --red: #b6493b;
       --amber: #b7781d;
+      --radius-card: 24px;
+      --radius-control: 14px;
+      --section-gap: 24px;
     }
 
     * {
@@ -29,6 +34,138 @@
       color: var(--ink);
       background: var(--paper);
       font: 15px 'DM Sans', sans-serif;
+    }
+
+    .loading-bar {
+      position: fixed;
+      z-index: 2000;
+      inset: 0 0 auto;
+      height: 4px;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--leaf-tertiary) 28%, transparent);
+    }
+
+    .loading-bar-bottom {
+      inset: auto 0 0;
+    }
+
+    .loading-bar[hidden],
+    .loading-bar-bottom[hidden] {
+      display: none;
+    }
+
+    .loading-bar::after,
+    .loading-bar-bottom::after {
+      content: "";
+      display: block;
+      width: 35%;
+      height: 100%;
+      border-radius: 0 999px 999px 0;
+      background: linear-gradient(90deg, var(--leaf), var(--leaf-secondary), var(--leaf-tertiary));
+      animation: loading-sweep 1.15s ease-in-out infinite;
+    }
+
+    .loading-bar-bottom::after {
+      width: 45%;
+    }
+
+    .loading-gear {
+      position: fixed;
+      z-index: 2001;
+      right: 24px;
+      bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--leaf-secondary);
+      background: var(--white);
+      box-shadow: 0 10px 28px #17231f26;
+      font-size: .85rem;
+      font-weight: 700;
+    }
+
+    .notification-stack {
+      position: fixed;
+      z-index: 2100;
+      left: 24px;
+      bottom: 24px;
+      display: grid;
+      gap: 10px;
+      width: min(420px, calc(100vw - 48px));
+      pointer-events: none;
+    }
+
+    .notification {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--leaf);
+      border-radius: 16px;
+      color: var(--ink);
+      background: var(--white);
+      box-shadow: 0 10px 28px #17231f26;
+      pointer-events: auto;
+      animation: notification-enter .2s ease-out both;
+    }
+
+    .notification.notification-error {
+      border-left-color: var(--red);
+    }
+
+    .notification-message {
+      line-height: 1.4;
+    }
+
+    .notification-dismiss {
+      flex: none;
+      padding: 0 2px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    @keyframes notification-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .loading-gear[hidden] {
+      display: none;
+    }
+
+    .loading-gear svg {
+      width: 22px;
+      height: 22px;
+      color: var(--leaf);
+      animation: gear-rotate 1.2s linear infinite;
+    }
+
+    @keyframes gear-rotate {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes loading-sweep {
+      from { transform: translateX(-110%); }
+      to { transform: translateX(390%); }
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     h1, h2, h3 {
@@ -57,6 +194,37 @@
     button {
       cursor: pointer;
       border: 0;
+      transition: background-color .18s ease, color .18s ease;
+    }
+
+    button:not(:disabled):hover {
+      animation: button-bounce .5s ease;
+    }
+
+    button:focus-visible {
+      outline: 3px solid #78a98f;
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+    }
+
+    @keyframes button-bounce {
+      0%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+      55% { transform: translateY(0); }
+      75% { transform: translateY(-3px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: none;
+      }
+
+      button:not(:disabled):hover {
+        animation: none;
+      }
     }
 
     .hidden {
@@ -76,38 +244,124 @@
       margin-bottom: 70px;
     }
 
+    .auth .topbar {
+      justify-content: flex-start;
+      margin: 0 0 28px;
+    }
+
     .brand {
       display: flex;
-      gap: 10px;
+      gap: 12px;
       align-items: center;
       color: var(--leaf);
       font: 700 1.1rem 'Space Grotesk';
     }
 
-    .mark {
-      width: 32px;
-      height: 32px;
-      display: grid;
-      place-items: center;
-      background: var(--leaf);
-      color: var(--paper);
-      border-radius: 50%;
+    .brand-logo {
+      display: block;
+      flex: none;
+      width: 38px;
+      height: 38px;
+      object-fit: contain;
+    }
+
+    .brand-hero {
+      gap: 20px;
+      font-size: clamp(3.2rem, 6.5vw, 5.25rem);
+      letter-spacing: -3px;
+      line-height: 1;
+    }
+
+    .brand-hero .brand-logo {
+      width: clamp(96px, 10vw, 148px);
+      height: clamp(96px, 10vw, 148px);
+    }
+
+    .auth-kicker {
+      margin: 0 0 12px;
+      color: #e2f3d4;
+      font: 600 clamp(1.15rem, 2vw, 1.45rem) 'Space Grotesk', sans-serif;
+      letter-spacing: .01em;
+    }
+
+    .auth h1 {
+      max-width: 650px;
+      margin-bottom: 14px;
+      font-size: clamp(1.45rem, 2.8vw, 2.15rem);
+      line-height: 1.15;
+      letter-spacing: -.5px;
+    }
+
+    .intro p.auth-description {
+      max-width: 520px;
+      margin: 0;
+      color: #eef7e7;
+      font-size: .9rem;
+      line-height: 1.55;
     }
 
     .auth {
+      position: relative;
+      width: 100%;
+      max-width: none;
       min-height: 100vh;
       display: grid;
-      grid-template-columns: 1.05fr .95fr;
-      gap: 80px;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: clamp(16px, 2vw, 28px);
       align-items: center;
+      padding: clamp(24px, 6vw, 72px);
+      color: #fff;
+      background: var(--leaf);
+      transition: opacity .32s ease, transform .32s ease;
+    }
+
+    .auth .intro {
+      width: 100%;
+      max-width: 650px;
+      justify-self: center;
+    }
+
+    .auth.leaving {
+      opacity: 0;
+      transform: scale(.985);
+      pointer-events: none;
+    }
+
+    .auth .brand {
+      color: #fff;
+    }
+
+    .auth .brand-logo {
+      width: clamp(96px, 11vw, 148px);
+      height: clamp(96px, 11vw, 148px);
+      padding: 8px;
+      border-radius: 50%;
+      background: #e8f4dc;
+    }
+
+    .auth .panel {
+      width: 100%;
+      max-width: 680px;
+      justify-self: center;
+      padding: clamp(36px, 4vw, 50px);
+      position: relative;
+      left: -34px;
+    }
+
+    .auth .eyebrow {
+      color: #d9efc3;
     }
 
     .intro p {
-      color: var(--muted);
+      color: #eef7e7;
       font-size: 1.1rem;
       line-height: 1.6;
       max-width: 470px;
       margin: 25px 0;
+    }
+
+    .auth .panel {
+      color: var(--ink);
     }
 
     .eyebrow {
@@ -123,7 +377,7 @@
       background: var(--white);
       border: 1px solid var(--line);
       padding: 30px;
-      border-radius: 10px;
+      border-radius: var(--radius-card);
       box-shadow: 0 12px 30px #173a2510;
     }
 
@@ -157,7 +411,7 @@
     input, select {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 5px;
+      border-radius: var(--radius-control);
       padding: 12px;
       background: #fff;
       color: var(--ink);
@@ -168,13 +422,13 @@
       margin-top: 22px;
       background: var(--leaf);
       color: #fff;
-      border-radius: 5px;
+      border-radius: var(--radius-control);
       padding: 13px 18px;
       font-weight: 700;
     }
 
     .primary:hover {
-      background: #0f4732;
+      background: var(--leaf-secondary);
     }
 
     .error {
@@ -184,12 +438,44 @@
     }
 
     .app {
+      position: relative;
       display: none;
     }
 
+    .auth > .intro,
+    .auth > .panel,
+    .app > main.dashboard {
+      position: relative;
+      z-index: 1;
+    }
+
+    .app > header.app-header {
+      z-index: 1000;
+    }
+
     .app-header {
-      border-bottom: 1px solid var(--line);
-      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      border-bottom: 1px solid #d5ded5cc;
+      padding: 14px 0;
+      background: color-mix(in srgb, var(--white) 94%, transparent);
+      box-shadow: 0 8px 24px #173a250d;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    .app-header .brand {
+      color: var(--leaf);
+    }
+
+    .app.entering {
+      animation: dashboard-enter .38s ease both;
+    }
+
+    @keyframes dashboard-enter {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .app-header .shell {
@@ -213,6 +499,8 @@
     }
 
     .dashboard {
+      display: grid;
+      gap: var(--section-gap);
       padding-top: 45px;
     }
 
@@ -220,7 +508,7 @@
       display: flex;
       justify-content: space-between;
       align-items: end;
-      margin-bottom: 30px;
+      margin-bottom: 0;
     }
 
     .dashboard-intro p {
@@ -228,10 +516,75 @@
       margin: 8px 0 0;
     }
 
+    .overview-hero {
+      display: grid;
+      grid-template-columns: minmax(200px, .8fr) 1.2fr;
+      gap: 28px;
+      align-items: center;
+      margin-bottom: 0;
+      padding: clamp(24px, 4vw, 38px);
+      overflow: hidden;
+      border-radius: 30px;
+      color: #fff;
+      background:
+        radial-gradient(ellipse at 100% 0%, #ffffff30, transparent 45%),
+        linear-gradient(120deg, var(--leaf), var(--leaf-secondary));
+      box-shadow: 0 18px 38px #388e3c26;
+    }
+
+    .overview-hero h3 {
+      margin: 5px 0 9px;
+      font-size: clamp(1.35rem, 3vw, 1.8rem);
+    }
+
+    .overview-hero p {
+      margin: 0;
+      color: #ffffffd9;
+      line-height: 1.55;
+    }
+
+    .overview-hero .overview-kicker {
+      color: #e6f4d7;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    .overview-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .overview-stat {
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 17px;
+      border: 1px solid #ffffff3d;
+      border-radius: 20px;
+      background: #ffffff1a;
+      backdrop-filter: blur(8px);
+    }
+
+    .overview-stat span {
+      color: #ffffffdf;
+      font-size: .82rem;
+      line-height: 1.3;
+    }
+
+    .overview-stat strong {
+      color: #fff;
+      font: 700 2rem 'Space Grotesk', sans-serif;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 22px;
+      gap: var(--section-gap);
     }
 
     .wide {
@@ -254,7 +607,7 @@
     .status {
       display: inline-block;
       padding: 5px 8px;
-      border-radius: 4px;
+      border-radius: 999px;
       font-size: .72rem;
       font-weight: 700;
       background: var(--mint);
@@ -292,10 +645,32 @@
 
     .action {
       padding: 7px 10px;
-      border-radius: 4px;
-      margin-right: 4px;
+      border-radius: 999px;
+      margin: 4px;
       font-size: .75rem;
       font-weight: 700;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    #routePlanForm {
+      display: grid;
+      gap: 14px;
+      margin-top: var(--section-gap);
+    }
+
+    #routePlanForm .hint {
+      margin: 0;
+    }
+
+    #routePlanForm .action {
+      justify-self: start;
+      margin: 0;
     }
 
     .approve {
@@ -308,6 +683,24 @@
       color: var(--red);
     }
 
+    .reject:hover {
+      background: #f0c9c3;
+    }
+
+    .approve:hover {
+      background: var(--leaf-secondary);
+    }
+
+    .quiet {
+      padding: 9px 13px;
+      border-radius: 999px;
+    }
+
+    .quiet:hover {
+      background: var(--mint);
+      color: var(--leaf-secondary);
+    }
+
     .empty {
       color: var(--muted);
       padding: 20px 0;
@@ -316,7 +709,7 @@
     .hub-layout {
       display: grid;
       grid-template-columns: 1.4fr 1fr;
-      gap: 22px;
+      gap: var(--section-gap);
     }
 
     .hub-map {
@@ -325,14 +718,14 @@
 
     #hubMap {
       height: 360px;
-      border-radius: 6px;
+      border-radius: 18px;
       border: 1px solid var(--line);
     }
 
     #userMap {
       height: 280px;
       margin-top: 8px;
-      border-radius: 6px;
+      border-radius: 18px;
       border: 1px solid var(--line);
     }
 
@@ -350,15 +743,48 @@
       margin-top: 3px;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+      .loading-bar::after,
+      .loading-bar-bottom::after {
+        width: 100%;
+        border-radius: 0;
+        animation: none;
+      }
+
+      .loading-gear svg {
+        animation: none;
+      }
+
+      .notification {
+        animation: none;
+      }
+
+    }
+
     @media (max-width: 760px) {
       .auth {
         grid-template-columns: 1fr;
-        gap: 30px;
-        padding-top: 25px;
+        gap: 24px;
+        padding: 25px 20px;
       }
 
       .intro {
         text-align: center;
+      }
+
+      .auth .intro {
+        max-width: 560px;
+      }
+
+      .auth .topbar {
+        justify-content: center;
+        margin-bottom: 18px;
+      }
+
+      .auth .panel {
+        max-width: 500px;
+        justify-self: center;
+        left: 0;
       }
 
       .intro p {
@@ -366,8 +792,15 @@
         margin-right: auto;
       }
 
-      .topbar {
-        margin-bottom: 20px;
+      .brand-hero {
+        justify-content: center;
+        gap: 14px;
+        font-size: clamp(2.5rem, 12vw, 3.6rem);
+      }
+
+      .brand-hero .brand-logo {
+        width: 76px;
+        height: 76px;
       }
 
       .grid {
@@ -382,6 +815,37 @@
         align-items: start;
         flex-direction: column;
         gap: 12px;
+      }
+
+      .overview-hero {
+        grid-template-columns: 1fr;
+        gap: 22px;
+        border-radius: 24px;
+      }
+
+      .overview-stats {
+        gap: 8px;
+      }
+
+      .loading-gear {
+        right: 14px;
+        bottom: 14px;
+      }
+
+      .notification-stack {
+        left: 14px;
+        bottom: 18px;
+        width: min(360px, calc(100vw - 28px));
+      }
+
+      .overview-stat {
+        min-height: 88px;
+        padding: 12px;
+        border-radius: 16px;
+      }
+
+      .overview-stat strong {
+        font-size: 1.65rem;
       }
 
       .panel {
@@ -408,16 +872,31 @@
   </style>
 </head>
 <body>
+  <div id="loadingBar" class="loading-bar" role="progressbar" aria-label="Processing" aria-valuetext="Idle" hidden>
+    <span class="visually-hidden">Processing your request</span>
+  </div>
+  <div id="loadingBarBottom" class="loading-bar loading-bar-bottom" aria-hidden="true" hidden></div>
+  <div id="loadingGear" class="loading-gear" role="status" aria-live="polite" hidden>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3h-4l-.4 3a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 1.7 1l.4 3h4l.4-3a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <circle cx="13" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/>
+    </svg>
+    <span>Working...</span>
+  </div>
+  <div id="notificationStack" class="notification-stack" aria-live="polite" aria-relevant="additions"></div>
 
   <!-- Auth View -->
   <main id="authView" class="shell auth">
     <section class="intro">
       <div class="topbar">
-        <div class="brand"><span class="mark">↗</span> EcoRoute</div>
+        <div class="brand brand-hero">
+          <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
+          <span>EcoRoute</span>
+        </div>
       </div>
-      <div class="eyebrow">Community E-waste logistics</div>
+      <p class="auth-kicker">Community E-waste logistics</p>
       <h1>Keep harmful tech out of the street.</h1>
-      <p>Request a pickup or find your nearest drop-off point. Every item is automatically risk-rated, reviewed, and routed responsibly.</p>
+      <p class="auth-description">Request a pickup or find your nearest drop-off point. Every item is automatically risk-rated, reviewed, and routed responsibly.</p>
     </section>
 
     <section class="panel">
@@ -445,7 +924,6 @@
       </form>
 
       <div id="authError" class="error"></div>
-      <p class="hint">Create an account with your email. Email confirmation may be required.</p>
     </section>
   </main>
 
@@ -453,7 +931,10 @@
   <div id="userApp" class="app">
     <header class="app-header">
       <div class="shell">
-        <div class="brand"><span class="mark">↗</span> EcoRoute</div>
+        <div class="brand">
+          <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
+          <span>EcoRoute</span>
+        </div>
         <div class="usernav">
           <span id="userName"></span>
           <button class="quiet logout">Log out</button>
@@ -469,6 +950,19 @@
           <p>Pin your location, choose an item, and we will handle the rest.</p>
         </div>
       </div>
+
+      <section class="overview-hero" aria-labelledby="userOverviewTitle">
+        <div>
+          <p class="overview-kicker">Dashboard overview</p>
+          <h3 id="userOverviewTitle">Your collection journey</h3>
+          <p>Keep track of your requests and their progress in one place.</p>
+        </div>
+        <div class="overview-stats" role="group" aria-label="Your request summary">
+          <div class="overview-stat"><span>Open requests</span><strong id="userOpenCount">—</strong></div>
+          <div class="overview-stat"><span>Awaiting review</span><strong id="userPendingCount">—</strong></div>
+          <div class="overview-stat"><span>Completed</span><strong id="userCompletedCount">—</strong></div>
+        </div>
+      </section>
 
       <div class="grid">
         <section class="panel">
@@ -488,7 +982,7 @@
 
             <label>Pin your location</label>
             <div id="userMap"></div>
-            <div><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="action reject" id="centerLocation">Center map</button></div>
+            <div class="button-row"><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="action reject" id="centerLocation">Center map</button></div>
             <p class="hint" id="locationStatus">Click the map or use GPS to place your pin.</p>
             <p class="hint" id="locationDetails">Nearest hub and road route will appear after you pin a location.</p>
 
@@ -529,7 +1023,10 @@
   <div id="adminApp" class="app">
     <header class="app-header">
       <div class="shell">
-        <div class="brand"><span class="mark">↗</span> EcoRoute <span class="hint">/ operations</span></div>
+        <div class="brand">
+          <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
+          <span>EcoRoute</span><span class="hint">/ operations</span>
+        </div>
         <div class="usernav">
           <span id="adminName"></span>
           <button class="quiet logout">Log out</button>
@@ -546,6 +1043,19 @@
         </div>
         <button class="quiet" id="refreshAdmin">Refresh queue</button>
       </div>
+
+      <section class="overview-hero" aria-labelledby="adminOverviewTitle">
+        <div>
+          <p class="overview-kicker">Operations dashboard</p>
+          <h3 id="adminOverviewTitle">Collection overview</h3>
+          <p>Monitor incoming requests and completed collections at a glance.</p>
+        </div>
+        <div class="overview-stats" role="group" aria-label="Collection request summary">
+          <div class="overview-stat"><span>Open requests</span><strong id="adminOpenCount">—</strong></div>
+          <div class="overview-stat"><span>Awaiting review</span><strong id="adminPendingCount">—</strong></div>
+          <div class="overview-stat"><span>Completed</span><strong id="adminCompletedCount">—</strong></div>
+        </div>
+      </section>
 
       <section class="panel wide">
         <div class="card-title"><h3>Request tools</h3><span class="hint">Search and sort with the request data structures</span></div>
@@ -594,7 +1104,7 @@
           </div>
           <form id="routePlanForm">
             <h3>Compare hub routes</h3>
-            <p class="hint">Compare Greedy (Dijkstra) with Exhaustive Search. Exhaustive Search is limited to 10 hubs.</p>
+            <p class="hint">Compare Greedy (Dijkstra), Exhaustive Search (limited to 10 hubs), and Divide and Conquer.</p>
             <div class="hub-layout">
               <select id="routeStart" aria-label="Starting hub" required></select>
               <select id="routeEnd" aria-label="Destination hub" required></select>

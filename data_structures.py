@@ -1,8 +1,27 @@
-"""Data structures used to organize EcoRoute requests and inventory."""
+"""Data structures used by EcoRoute's routing, requests, and inventory."""
 
 import heapq
 
 
+# First data structure: weighted graph stored as an adjacency list.
+class Graph:
+    """Weighted undirected graph of hubs and their connecting distances."""
+
+    def __init__(self):
+        self.adj = {}
+
+    def add_station(self, name):
+        if name not in self.adj:
+            self.adj[name] = []
+
+    def add_edge(self, u, v, weight):
+        self.add_station(u)
+        self.add_station(v)
+        self.adj[u].append((v, weight))
+        self.adj[v].append((u, weight))
+
+
+# Second data structure: heap-based priority queue for e-waste requests.
 class EwastePriorityQueue:
     """Binary-heap max-priority queue for e-waste requests.
 
@@ -43,6 +62,7 @@ class EwastePriorityQueue:
         heapq.heapify(self.heap)
 
 
+# Third data structure: AVL tree for inventory categories.
 class AVLNode:
     """One category node in the AVL inventory tree."""
 

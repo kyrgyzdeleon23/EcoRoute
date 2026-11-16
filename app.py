@@ -9,8 +9,12 @@ from urllib.request import urlopen
 
 from flask import Flask, jsonify, render_template, request, session
 
-from data_algorithm import Graph
-from dsa_datastructures import AVLInventoryTree, EwastePriorityQueue
+from data_algorithm import (
+    divide_and_conquer_shortest_path,
+    exhaustive_shortest_path,
+    greedy_shortest_path,
+)
+from data_structures import AVLInventoryTree, EwastePriorityQueue, Graph
 from supabase_store import (
     SupabaseConfigurationError,
     auth_request,
@@ -241,7 +245,7 @@ def add_audit(request_id, action):
 def request_route(request_item):
     load_hubs()
     destination = nearest_hub(request_item["latitude"], request_item["longitude"])
-    graph_route = graph.shortest_path(destination["name"], destination["name"])
+    graph_route = greedy_shortest_path(graph, destination["name"], destination["name"])
     road = road_route(request_item["latitude"], request_item["longitude"], destination["name"])
     return {
         "type": request_item["method"],
@@ -296,8 +300,9 @@ def compare_hub_routes():
         return jsonify({"error": "Choose two valid hubs"}), 400
     try:
         return jsonify({
-            "greedy": graph.shortest_path(start, end),
-            "exhaustive": graph.shortest_path_exhaustive(start, end),
+            "greedy": greedy_shortest_path(graph, start, end),
+            "exhaustive": exhaustive_shortest_path(graph, start, end),
+            "divide_and_conquer": divide_and_conquer_shortest_path(graph, start, end),
         })
     except ValueError as error:
         return jsonify({"error": str(error)}), 400

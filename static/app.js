@@ -3,21 +3,75 @@ let config;
 let liveGpsWatch;
 let adminSearchTimer;
 let routePreviewToken = 0;
+let pendingApiRequests = 0;
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Something went wrong");
-  return data;
+function updateLoadingBar() {
+  const loadingBar = $("#loadingBar");
+  const loadingBarBottom = $("#loadingBarBottom");
+  const loadingGear = $("#loadingGear");
+  const isLoading = pendingApiRequests > 0;
+  loadingBar.hidden = !isLoading;
+  loadingBarBottom.hidden = !isLoading;
+  loadingBar.setAttribute("aria-valuetext", isLoading ? "Processing request" : "Idle");
+  loadingGear.hidden = !isLoading;
 }
 
-function showApp(user) {
-  $("#authView").style.display = "none";
+function notify(message, type = "success") {
+  const stack = $("#notificationStack");
+  const notification = document.createElement("div");
+  notification.className = `notification${type === "error" ? " notification-error" : ""}`;
+  notification.setAttribute("role", type === "error" ? "alert" : "status");
+
+  const text = document.createElement("span");
+  text.className = "notification-message";
+  text.textContent = message;
+
+  const dismiss = document.createElement("button");
+  dismiss.className = "notification-dismiss";
+  dismiss.type = "button";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.textContent = "×";
+  dismiss.addEventListener("click", () => notification.remove());
+
+  notification.append(text, dismiss);
+  stack.append(notification);
+  while (stack.children.length > 4) stack.firstElementChild.remove();
+  window.setTimeout(() => notification.remove(), 6000);
+}
+
+async function api(url, options = {}) {
+  pendingApiRequests += 1;
+  updateLoadingBar();
+  try {
+    const response = await fetch(url, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Something went wrong");
+    return data;
+  } finally {
+    pendingApiRequests = Math.max(0, pendingApiRequests - 1);
+    updateLoadingBar();
+  }
+}
+
+function showApp(user, animate = true) {
+  const authView = $("#authView");
   const app = user.role === "admin" ? $("#adminApp") : $("#userApp");
   app.style.display = "block";
+  if (animate) {
+    authView.classList.add("leaving");
+    app.classList.add("entering");
+    window.setTimeout(() => {
+      authView.classList.add("hidden");
+      authView.setAttribute("aria-hidden", "true");
+      app.classList.remove("entering");
+    }, 340);
+  } else {
+    authView.classList.add("hidden");
+    authView.setAttribute("aria-hidden", "true");
+  }
   $(user.role === "admin" ? "#adminName" : "#userName").textContent = user.name;
   if (user.role === "admin") {
     loadAdmin();
@@ -85,15 +139,27 @@ function requestTable(items, admin = false) {
   return `<table><thead><tr><th>Request</th><th>Resident</th><th>Item</th><th>Method</th><th>Risk</th><th>Score</th><th>Status</th>${admin ? "<th>Action</th>" : ""}</tr></thead><tbody>${items.map((item) => `<tr><td>#${item.id}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.item)}</td><td>${item.method}</td><td><strong>${item.hazard}/5</strong></td><td>${item.priority_score}</td><td><span class="status ${item.status}">${item.status}</span>${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}</td>${adminActions(item, admin)}</tr>`).join("")}</tbody></table>`;
 }
 
+function updateOverview(prefix, requests) {
+  const openCount = requests.filter((item) => !["Completed", "Rejected"].includes(item.status)).length;
+  const pendingCount = requests.filter((item) => item.status === "Pending").length;
+  const completedCount = requests.filter((item) => item.status === "Completed").length;
+  $(`#${prefix}OpenCount`).textContent = openCount;
+  $(`#${prefix}PendingCount`).textContent = pendingCount;
+  $(`#${prefix}CompletedCount`).textContent = completedCount;
+}
+
 async function loadUser() {
   const requests = await api("/api/my-requests");
+  updateOverview("user", requests);
   $("#userRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)));
   $("#userHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)));
 }
 
 async function loadAdmin() {
-  const params = new URLSearchParams({ search: $("#adminSearch").value, sort: $("#adminSort").value });
+  const search = $("#adminSearch").value;
+  const params = new URLSearchParams({ search, sort: $("#adminSort").value });
   const requests = await api(`/api/admin/requests?${params}`);
+  if (!search) updateOverview("admin", requests);
   $("#adminRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)), true);
   $("#adminHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), true);
 }
@@ -113,14 +179,20 @@ setInterval(() => {
 }, 5000);
 
 function setHubCoordinates(latitude, longitude) {
+  const changed = $("#hubLatitude").value !== latitude.toFixed(6)
+    || $("#hubLongitude").value !== longitude.toFixed(6);
   $("#hubLatitude").value = latitude.toFixed(6);
   $("#hubLongitude").value = longitude.toFixed(6);
+  if (changed) notify("Hub coordinates pinned. Add the hub to save this location.");
 }
 
-function setUserCoordinates(latitude, longitude) {
+function setUserCoordinates(latitude, longitude, announce = true) {
+  const changed = $("#latitude").value !== latitude.toFixed(6)
+    || $("#longitude").value !== longitude.toFixed(6);
   $("#latitude").value = latitude.toFixed(6);
   $("#longitude").value = longitude.toFixed(6);
   $("#locationStatus").textContent = `Pinned location: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  if (announce && changed) notify(`Location pinned at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}.`);
   updateLocationPreview(latitude, longitude);
 }
 
@@ -180,28 +252,45 @@ $("#signupForm").addEventListener("submit", (event) => {
 });
 
 document.querySelectorAll(".logout").forEach((button) => button.addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST" });
-  window.location.reload();
+  try {
+    await api("/api/logout", { method: "POST" });
+    window.location.reload();
+  } catch (error) {
+    notify(`Could not log out: ${error.message}`, "error");
+  }
 }));
 
 $("#category").addEventListener("change", renderItems);
+let gpsPinNotified = false;
 $("#locate").addEventListener("click", () => {
   if (!navigator.geolocation) {
     $("#locationStatus").textContent = "This browser does not support GPS.";
+    notify("This browser does not support GPS.", "error");
     return;
   }
   if (liveGpsWatch) navigator.geolocation.clearWatch(liveGpsWatch);
+  gpsPinNotified = false;
   $("#locationStatus").textContent = "Tracking your live location...";
   liveGpsWatch = navigator.geolocation.watchPosition((position) => {
-    setUserCoordinates(position.coords.latitude, position.coords.longitude);
+    setUserCoordinates(position.coords.latitude, position.coords.longitude, false);
     $("#locationStatus").textContent = `Live location: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
-  }, () => { $("#locationStatus").textContent = "Location permission was not granted."; }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+    if (!gpsPinNotified) {
+      notify(`GPS location pinned at ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}. Live tracking is on.`);
+      gpsPinNotified = true;
+    }
+  }, () => {
+    $("#locationStatus").textContent = "Location permission was not granted.";
+    notify("Location permission was not granted.", "error");
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
 });
 
 $("#centerLocation").addEventListener("click", () => {
   if (EcoRouteMap.centerUserMap()) return;
-  navigator.geolocation.getCurrentPosition((position) => setUserCoordinates(position.coords.latitude, position.coords.longitude), () => {
+  navigator.geolocation.getCurrentPosition((position) => {
+    setUserCoordinates(position.coords.latitude, position.coords.longitude);
+  }, () => {
     $("#locationStatus").textContent = "Location permission was not granted.";
+    notify("Location permission was not granted.", "error");
   }, { enableHighAccuracy: true });
 });
 
@@ -209,6 +298,7 @@ $("#requestForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!$("#latitude").value || !$("#longitude").value) {
     $("#requestError").textContent = "Click the map or use GPS to pin your location before submitting.";
+    notify("Pin a location before submitting your request.", "error");
     return;
   }
   const submitButton = $("#requestSubmit");
@@ -224,9 +314,11 @@ $("#requestForm").addEventListener("submit", async (event) => {
     $("#requestError").textContent = "";
     $("#requestConfirmation").textContent = "Request submitted. It is now waiting for admin approval.";
     EcoRouteMap.clearUserPin();
+    notify("Collection request submitted. It is waiting for admin approval.");
     loadUser();
   } catch (error) {
     $("#requestError").textContent = error.message;
+    notify(`Request could not be submitted: ${error.message}`, "error");
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Submit request";
@@ -241,7 +333,12 @@ $("#adminSearch").addEventListener("input", () => {
 });
 $("#adminSort").addEventListener("change", loadAdmin);
 $("#clearAdminSearch").addEventListener("click", () => { $("#adminSearch").value = ""; $("#adminSort").value = "risk"; loadAdmin(); });
-$("#adminLocate").addEventListener("click", () => navigator.geolocation.getCurrentPosition((position) => setHubCoordinates(position.coords.latitude, position.coords.longitude), () => { $("#hubError").textContent = "Location permission was not granted."; }, { enableHighAccuracy: true }));
+$("#adminLocate").addEventListener("click", () => navigator.geolocation.getCurrentPosition((position) => {
+  setHubCoordinates(position.coords.latitude, position.coords.longitude);
+}, () => {
+  $("#hubError").textContent = "Location permission was not granted.";
+  notify("Location permission was not granted.", "error");
+}, { enableHighAccuracy: true }));
 $("#routePlanForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const result = $("#routePlanResult");
@@ -252,13 +349,14 @@ $("#routePlanForm").addEventListener("submit", async (event) => {
     const formatRoute = (label, route) => route.path.length
       ? `<div><strong>${label}:</strong> ${route.distance} km · ${route.path.map(escapeHtml).join(" → ")}</div>`
       : `<div><strong>${label}:</strong> No route found</div>`;
-    result.innerHTML = `${formatRoute("Greedy (Dijkstra)", comparison.greedy)}${formatRoute("Exhaustive Search", comparison.exhaustive)}`;
+    result.innerHTML = `${formatRoute("Greedy (Dijkstra)", comparison.greedy)}${formatRoute("Exhaustive Search", comparison.exhaustive)}${formatRoute("Divide and Conquer", comparison.divide_and_conquer)}`;
   } catch (error) {
     result.textContent = error.message;
   }
 });
 $("#hubForm").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const hubName = $("#hubName").value.trim();
   try {
     await api("/api/admin/hubs", { method: "POST", body: JSON.stringify({ name: $("#hubName").value, latitude: $("#hubLatitude").value, longitude: $("#hubLongitude").value }) });
     config = await api("/api/config");
@@ -266,24 +364,41 @@ $("#hubForm").addEventListener("submit", async (event) => {
     $("#hubError").textContent = "";
     EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
     renderHubList();
+    notify(`Hub "${hubName}" added.`);
   } catch (error) {
     $("#hubError").textContent = error.message;
+    notify(`Hub could not be added: ${error.message}`, "error");
   }
 });
 
 window.updateRequest = async (id, action) => {
-  await api(`/api/admin/requests/${id}`, { method: "POST", body: JSON.stringify({ action }) });
-  loadAdmin();
-  loadInventorySummary();
-  loadAuditHistory();
+  try {
+    await api(`/api/admin/requests/${id}`, { method: "POST", body: JSON.stringify({ action }) });
+    const messages = {
+      approve: "Request approved.",
+      reject: "Request rejected.",
+      complete: "Request marked as completed.",
+    };
+    notify(messages[action] || "Request updated.");
+    loadAdmin();
+    loadInventorySummary();
+    loadAuditHistory();
+  } catch (error) {
+    notify(`Request could not be updated: ${error.message}`, "error");
+  }
 };
 
 window.deleteRequest = async (id) => {
   if (!window.confirm("Delete this request from the system and history?")) return;
-  await api(`/api/admin/requests/${id}`, { method: "DELETE" });
-  loadAdmin();
-  loadInventorySummary();
-  loadAuditHistory();
+  try {
+    await api(`/api/admin/requests/${id}`, { method: "DELETE" });
+    notify("Request deleted.");
+    loadAdmin();
+    loadInventorySummary();
+    loadAuditHistory();
+  } catch (error) {
+    notify(`Request could not be deleted: ${error.message}`, "error");
+  }
 };
 
 window.removeHub = async (name) => {
@@ -292,15 +407,17 @@ window.removeHub = async (name) => {
     config = await api("/api/config");
     EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
     renderHubList();
+    notify(`Hub "${name}" removed.`);
   } catch (error) {
     $("#hubError").textContent = error.message;
+    notify(`Hub could not be removed: ${error.message}`, "error");
   }
 };
 
 (async () => {
   try {
     config = await api("/api/config");
-    if (config.user) showApp(config.user);
+    if (config.user) showApp(config.user, false);
     else $("#authView").style.display = "grid";
     $("#category").innerHTML = Object.keys(config.categories).map((category) => `<option>${category}</option>`).join("");
     renderItems();
