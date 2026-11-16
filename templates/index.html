@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EcoRoute | E-waste collection</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    :root {
+      --ink: #17231f;
+      --muted: #6d7d76;
+      --paper: #f5f2e9;
+      --white: #fffdf8;
+      --leaf: #175d43;
+      --mint: #dcebdd;
+      --line: #d5ded5;
+      --red: #b6493b;
+      --amber: #b7781d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 15px 'DM Sans', sans-serif;
+    }
+
+    h1, h2, h3 {
+      font-family: 'Space Grotesk', sans-serif;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 5rem);
+      line-height: .95;
+      letter-spacing: -2px;
+    }
+
+    h2 {
+      font-size: 1.55rem;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      border: 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 70px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--leaf);
+      font: 700 1.1rem 'Space Grotesk';
+    }
+
+    .mark {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      background: var(--leaf);
+      color: var(--paper);
+      border-radius: 50%;
+    }
+
+    .auth {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .intro p {
+      color: var(--muted);
+      font-size: 1.1rem;
+      line-height: 1.6;
+      max-width: 470px;
+      margin: 25px 0;
+    }
+
+    .eyebrow {
+      color: var(--leaf);
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-size: .75rem;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: var(--white);
+      border: 1px solid var(--line);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 12px 30px #173a2510;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      padding: 10px 12px;
+      color: var(--muted);
+      background: none;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab.active {
+      color: var(--leaf);
+      border-color: var(--leaf);
+      font-weight: 700;
+    }
+
+    label {
+      display: block;
+      font-size: .8rem;
+      font-weight: 700;
+      margin: 15px 0 6px;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 12px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .primary {
+      width: 100%;
+      margin-top: 22px;
+      background: var(--leaf);
+      color: #fff;
+      border-radius: 5px;
+      padding: 13px 18px;
+      font-weight: 700;
+    }
+
+    .primary:hover {
+      background: #0f4732;
+    }
+
+    .error {
+      color: var(--red);
+      min-height: 20px;
+      margin-top: 12px;
+    }
+
+    .app {
+      display: none;
+    }
+
+    .app-header {
+      border-bottom: 1px solid var(--line);
+      padding: 20px 0;
+    }
+
+    .app-header .shell {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+
+    .usernav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .quiet {
+      background: none;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .dashboard {
+      padding-top: 45px;
+    }
+
+    .dashboard-intro {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      margin-bottom: 30px;
+    }
+
+    .dashboard-intro p {
+      color: var(--muted);
+      margin: 8px 0 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .card-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: .85rem;
+      line-height: 1.45;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: .72rem;
+      font-weight: 700;
+      background: var(--mint);
+      color: var(--leaf);
+    }
+
+    .status.Pending {
+      background: #f6e8c9;
+      color: var(--amber);
+    }
+
+    .status.Rejected {
+      background: #f7dcd8;
+      color: var(--red);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .85rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: var(--muted);
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    .action {
+      padding: 7px 10px;
+      border-radius: 4px;
+      margin-right: 4px;
+      font-size: .75rem;
+      font-weight: 700;
+    }
+
+    .approve {
+      background: var(--leaf);
+      color: white;
+    }
+
+    .reject {
+      background: #f7dcd8;
+      color: var(--red);
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 20px 0;
+    }
+
+    .hub-layout {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 22px;
+    }
+
+    .hub-map {
+      min-height: 360px;
+    }
+
+    #hubMap {
+      height: 360px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+
+    #userMap {
+      height: 280px;
+      margin-top: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+
+    .hub-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--line);
+      padding: 12px 0;
+    }
+
+    .hub-row small {
+      display: block;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    @media (max-width: 760px) {
+      .auth {
+        grid-template-columns: 1fr;
+        gap: 30px;
+        padding-top: 25px;
+      }
+
+      .intro {
+        text-align: center;
+      }
+
+      .intro p {
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .topbar {
+        margin-bottom: 20px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .wide {
+        grid-column: auto;
+      }
+
+      .dashboard-intro {
+        align-items: start;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .panel {
+        padding: 20px;
+        overflow: auto;
+      }
+
+      table {
+        min-width: 650px;
+      }
+
+      .hub-layout {
+        grid-template-columns: 1fr;
+      }
+
+      #hubMap {
+        height: 280px;
+      }
+
+      #userMap {
+        height: 240px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth View -->
+  <main id="authView" class="shell auth">
+    <section class="intro">
+      <div class="topbar">
+        <div class="brand"><span class="mark">↗</span> EcoRoute</div>
+      </div>
+      <div class="eyebrow">Community E-waste logistics</div>
+      <h1>Keep harmful tech out of the street.</h1>
+      <p>Request a pickup or find your nearest drop-off point. Every item is automatically risk-rated, reviewed, and routed responsibly.</p>
+    </section>
+
+    <section class="panel">
+      <div class="tabs">
+        <button class="tab active" data-mode="login">Log in</button>
+        <button class="tab" data-mode="signup">Create account</button>
+      </div>
+
+      <form id="loginForm">
+        <label>Email</label>
+        <input id="loginEmail" type="email" required autocomplete="email">
+        <label>Password</label>
+        <input id="loginPassword" type="password" required autocomplete="current-password">
+        <button class="primary">Enter hub</button>
+      </form>
+
+      <form id="signupForm" class="hidden">
+        <label>Your name</label>
+        <input id="signupName" required>
+        <label>Email</label>
+        <input id="signupEmail" type="email" required autocomplete="email">
+        <label>Password</label>
+        <input id="signupPassword" type="password" minlength="6" required>
+        <button class="primary">Create account</button>
+      </form>
+
+      <div id="authError" class="error"></div>
+      <p class="hint">Create an account with your email. Email confirmation may be required.</p>
+    </section>
+  </main>
+
+  <!-- User App View -->
+  <div id="userApp" class="app">
+    <header class="app-header">
+      <div class="shell">
+        <div class="brand"><span class="mark">↗</span> EcoRoute</div>
+        <div class="usernav">
+          <span id="userName"></span>
+          <button class="quiet logout">Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell dashboard">
+      <div class="dashboard-intro">
+        <div>
+          <div class="eyebrow">Resident hub</div>
+          <h2>Move e-waste safely.</h2>
+          <p>Pin your location, choose an item, and we will handle the rest.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <div class="card-title">
+            <h3>New collection request</h3>
+          </div>
+          <form id="requestForm">
+            <label>What are you sending?</label>
+            <select id="category" required></select>
+            <select id="item" required></select>
+
+            <label>Collection method</label>
+            <select id="method">
+              <option value="dropoff">I will drop it off</option>
+              <option value="pickup">Please pick it up</option>
+            </select>
+
+            <label>Pin your location</label>
+            <div id="userMap"></div>
+            <div><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="action reject" id="centerLocation">Center map</button></div>
+            <p class="hint" id="locationStatus">Click the map or use GPS to place your pin.</p>
+            <p class="hint" id="locationDetails">Nearest hub and road route will appear after you pin a location.</p>
+
+            <input id="latitude" type="hidden">
+            <input id="longitude" type="hidden">
+
+            <button class="primary" id="requestSubmit" type="submit">Submit request</button>
+            <p class="hint" id="requestConfirmation"></p>
+            <div id="requestError" class="error"></div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="card-title">
+            <h3>Risk guide</h3>
+            <span class="hint">Automatic</span>
+          </div>
+          <div id="riskGuide"></div>
+        </section>
+
+        <section class="panel wide">
+          <div class="card-title">
+            <h3>Active requests</h3>
+            <button class="quiet" id="refreshUser">Refresh</button>
+          </div>
+          <div id="userRequests"></div>
+        </section>
+
+        <section class="panel wide">
+          <div class="card-title"><h3>Request history</h3></div>
+          <div id="userHistory"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Admin App View -->
+  <div id="adminApp" class="app">
+    <header class="app-header">
+      <div class="shell">
+        <div class="brand"><span class="mark">↗</span> EcoRoute <span class="hint">/ operations</span></div>
+        <div class="usernav">
+          <span id="adminName"></span>
+          <button class="quiet logout">Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell dashboard">
+      <div class="dashboard-intro">
+        <div>
+          <div class="eyebrow">Admin console</div>
+          <h2>Collection requests</h2>
+          <p>Review every request. Highest risk appears first, from level 5 to level 1.</p>
+        </div>
+        <button class="quiet" id="refreshAdmin">Refresh queue</button>
+      </div>
+
+      <section class="panel wide">
+        <div class="card-title"><h3>Request tools</h3><span class="hint">Search and sort with the request data structures</span></div>
+        <div class="hub-layout">
+          <input id="adminSearch" placeholder="Search resident, category, or item">
+          <select id="adminSort">
+            <option value="risk">Sort by risk level</option>
+            <option value="item">Sort by item type</option>
+            <option value="shortest">Sort by shortest path</option>
+          </select>
+        </div>
+        <div><button class="action reject" id="clearAdminSearch">Clear filters</button></div>
+      </section>
+
+      <div class="grid">
+        <section class="panel wide">
+          <div class="card-title"><h3>Active request queue</h3></div>
+          <div id="adminRequests"></div>
+        </section>
+        <section class="panel wide">
+          <div class="card-title"><h3>Request history</h3></div>
+          <div id="adminHistory"></div>
+        </section>
+        <section class="panel wide">
+          <div class="card-title"><h3>Inventory dashboard</h3></div>
+          <div id="inventorySummary"></div>
+        </section>
+        <section class="panel wide">
+          <div class="card-title"><h3>Admin audit history</h3></div>
+          <div id="auditHistory"></div>
+        </section>
+        <section class="panel wide">
+          <div class="card-title">
+            <div><h3>Drop-off locations</h3><p class="hint">Click the map or use live GPS to pin a new hub.</p></div>
+            <button class="quiet" id="adminLocate">Use my GPS</button>
+          </div>
+          <div class="hub-layout">
+            <div id="hubMap"></div>
+            <form id="hubForm">
+              <label>Hub name</label><input id="hubName" required placeholder="e.g. East Community Center">
+              <label>Latitude</label><input id="hubLatitude" type="number" step="any" required>
+              <label>Longitude</label><input id="hubLongitude" type="number" step="any" required>
+              <button class="primary">Save drop-off location</button>
+              <div id="hubError" class="error"></div>
+            </form>
+          </div>
+          <form id="routePlanForm">
+            <h3>Compare hub routes</h3>
+            <p class="hint">Compare Greedy (Dijkstra) with Exhaustive Search. Exhaustive Search is limited to 10 hubs.</p>
+            <div class="hub-layout">
+              <select id="routeStart" aria-label="Starting hub" required></select>
+              <select id="routeEnd" aria-label="Destination hub" required></select>
+            </div>
+            <button class="action approve" type="submit">Compare routes</button>
+            <div id="routePlanResult" class="hint" aria-live="polite"></div>
+          </form>
+          <div id="hubList"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="{{ url_for('static', filename='map.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
