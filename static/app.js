@@ -5,6 +5,14 @@ let adminSearchTimer;
 let routePreviewToken = 0;
 let pendingApiRequests = 0;
 
+const confirmationDialog = $("#confirmationDialog");
+if (confirmationDialog && !confirmationDialog.querySelector('form[method="dialog"]')) {
+  const confirmationCancel = $("#confirmationCancel");
+  const confirmationAccept = $("#confirmationAccept");
+  if (confirmationCancel) confirmationCancel.addEventListener("click", () => confirmationDialog.close("cancel"));
+  if (confirmationAccept) confirmationAccept.addEventListener("click", () => confirmationDialog.close("confirm"));
+}
+
 function updateLoadingBar() {
   const loadingBar = $("#loadingBar");
   const loadingBarBottom = $("#loadingBarBottom");
@@ -37,6 +45,20 @@ function notify(message, type = "success") {
   stack.append(notification);
   while (stack.children.length > 4) stack.firstElementChild.remove();
   window.setTimeout(() => notification.remove(), 6000);
+}
+
+function confirmAction(title, message, { confirmLabel = "Confirm", danger = false } = {}) {
+  const confirmButton = $("#confirmationAccept");
+  $("#confirmationTitle").textContent = title;
+  $("#confirmationMessage").textContent = message;
+  confirmButton.textContent = confirmLabel;
+  confirmButton.classList.toggle("confirm-danger", danger);
+  confirmationDialog.returnValue = "";
+
+  return new Promise((resolve) => {
+    confirmationDialog.addEventListener("close", () => resolve(confirmationDialog.returnValue === "confirm"), { once: true });
+    confirmationDialog.showModal();
+  });
 }
 
 async function api(url, options = {}) {
@@ -92,7 +114,9 @@ function escapeHtml(text) {
 }
 
 function renderRisk() {
-  $("#riskGuide").innerHTML = Object.entries(config.categories).map(([name, data]) =>
+  $("#riskGuide").innerHTML = Object.entries(config.categories)
+    .sort(([, first], [, second]) => second.hazard - first.hazard)
+    .map(([name, data]) =>
     `<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:11px 0"><span>${name}</span><strong>Level ${data.hazard}</strong></div>`
   ).join("");
 }
@@ -128,10 +152,9 @@ function lifecycleSummary(item) {
 function adminActions(item, admin) {
   if (!admin) return "";
   let actions = "";
-  if (item.status === "Pending") actions += `<button class="action approve" onclick="updateRequest('${item.id}','approve')">Approve</button><button class="action reject" onclick="updateRequest('${item.id}','reject')">Reject</button>`;
-  if (item.status === "Approved") actions += `<button class="action approve" onclick="updateRequest('${item.id}','complete')">Confirm ${item.method === "dropoff" ? "drop-off" : "pickup"}</button>`;
-  actions += `<button class="action reject" onclick="deleteRequest('${item.id}')">Delete</button>`;
-  return `<td>${actions}</td>`;
+  if (item.status === "Pending") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','approve')">Approve</button><button type="button" class="action reject" onclick="updateRequest('${item.id}','reject')">Reject</button>`;
+  if (item.status === "Approved") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','complete')">Confirm ${item.method === "dropoff" ? "drop-off" : "pickup"}</button>`;
+  return `<td class="request-actions">${actions ? `<div class="request-action-group">${actions}</div>` : ""}<div class="request-action-delete"><button type="button" class="action reject" onclick="deleteRequest('${item.id}')">Delete</button></div></td>`;
 }
 
 function requestTable(items, admin = false) {
@@ -146,6 +169,25 @@ function updateOverview(prefix, requests) {
   $(`#${prefix}OpenCount`).textContent = openCount;
   $(`#${prefix}PendingCount`).textContent = pendingCount;
   $(`#${prefix}CompletedCount`).textContent = completedCount;
+}
+
+if ("IntersectionObserver" in window) {
+  const sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const sectionId = entry.target.id;
+      const nav = entry.target.closest(".dashboard").querySelector(".dashboard-section-nav");
+      nav.querySelectorAll(".section-link").forEach((link) => {
+        if (link.dataset.sectionLink === sectionId) {
+          link.setAttribute("aria-current", "location");
+        } else {
+          link.removeAttribute("aria-current");
+        }
+      });
+    });
+  }, { rootMargin: "-130px 0px -65% 0px" });
+
+  document.querySelectorAll("[data-dashboard-section]").forEach((section) => sectionObserver.observe(section));
 }
 
 async function loadUser() {
@@ -301,6 +343,11 @@ $("#requestForm").addEventListener("submit", async (event) => {
     notify("Pin a location before submitting your request.", "error");
     return;
   }
+  if (!await confirmAction(
+    "Submit collection request?",
+    `Submit a collection request for "${$("#item").value}"?`,
+    { confirmLabel: "Submit request" },
+  )) return;
   const submitButton = $("#requestSubmit");
   submitButton.disabled = true;
   submitButton.textContent = "Saving request...";
@@ -334,7 +381,7 @@ $("#adminSearch").addEventListener("input", () => {
 $("#adminSort").addEventListener("change", loadAdmin);
 $("#clearAdminSearch").addEventListener("click", () => { $("#adminSearch").value = ""; $("#adminSort").value = "risk"; loadAdmin(); });
 $("#adminLocate").addEventListener("click", () => navigator.geolocation.getCurrentPosition((position) => {
-  setHubCoordinates(position.coords.latitude, position.coords.longitude);
+  EcoRouteMap.setAdminPin(position.coords.latitude, position.coords.longitude, setHubCoordinates);
 }, () => {
   $("#hubError").textContent = "Location permission was not granted.";
   notify("Location permission was not granted.", "error");
@@ -357,6 +404,11 @@ $("#routePlanForm").addEventListener("submit", async (event) => {
 $("#hubForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const hubName = $("#hubName").value.trim();
+  if (!await confirmAction(
+    "Add drop-off location?",
+    `Add "${hubName}" as a drop-off location?`,
+    { confirmLabel: "Add location" },
+  )) return;
   try {
     await api("/api/admin/hubs", { method: "POST", body: JSON.stringify({ name: $("#hubName").value, latitude: $("#hubLatitude").value, longitude: $("#hubLongitude").value }) });
     config = await api("/api/config");
@@ -372,6 +424,11 @@ $("#hubForm").addEventListener("submit", async (event) => {
 });
 
 window.updateRequest = async (id, action) => {
+  const confirmation = {
+    approve: { title: "Approve request?", message: "This will approve the collection request.", confirmLabel: "Approve request" },
+    reject: { title: "Reject request?", message: "This will reject the collection request.", confirmLabel: "Reject request", danger: true },
+  }[action];
+  if (confirmation && !await confirmAction(confirmation.title, confirmation.message, confirmation)) return;
   try {
     await api(`/api/admin/requests/${id}`, { method: "POST", body: JSON.stringify({ action }) });
     const messages = {
@@ -389,7 +446,11 @@ window.updateRequest = async (id, action) => {
 };
 
 window.deleteRequest = async (id) => {
-  if (!window.confirm("Delete this request from the system and history?")) return;
+  if (!await confirmAction(
+    "Delete request?",
+    "This permanently deletes the request from the system and history.",
+    { confirmLabel: "Delete request", danger: true },
+  )) return;
   try {
     await api(`/api/admin/requests/${id}`, { method: "DELETE" });
     notify("Request deleted.");
@@ -402,6 +463,11 @@ window.deleteRequest = async (id) => {
 };
 
 window.removeHub = async (name) => {
+  if (!await confirmAction(
+    "Remove drop-off location?",
+    `Remove "${name}" from drop-off locations?`,
+    { confirmLabel: "Remove location", danger: true },
+  )) return;
   try {
     await api(`/api/admin/hubs/${encodeURIComponent(name)}`, { method: "DELETE" });
     config = await api("/api/config");
