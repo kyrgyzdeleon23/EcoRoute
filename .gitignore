@@ -1,5 +1,6 @@
 .env
 .netlify/
+dist/
 .venv/
 venv/
 __pycache__/
