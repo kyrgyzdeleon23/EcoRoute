@@ -1,0 +1,19 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  included_files = [
+    "app.py",
+    "data_algorithm.py",
+    "data_structures.py",
+    "supabase_store.py",
+    "templates/**",
+    "static/**"
+  ]
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

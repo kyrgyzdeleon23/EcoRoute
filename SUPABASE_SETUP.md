@@ -13,43 +13,36 @@
 7. To make an account an administrator, run the commented profile update at the
    end of `supabase_schema.sql`, replacing the email with the administrator's
    email.
-## Publish the website with Render
+## Publish the website with Netlify
 
-1. Make sure `.env` is not uploaded. The repository's `.gitignore` excludes it.
-   Never put Supabase keys in frontend code or publish them in a repository.
-2. Push the project files to a GitHub repository. You can use GitHub Desktop to
-   publish the `ecoroute_web` folder if Git is not installed.
-3. In the [Render Dashboard](https://dashboard.render.com), choose **New >
-   Web Service** and connect the GitHub repository.
-4. Configure the service:
-   - **Language:** Python 3
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn app:app`
-5. In Render's **Environment** settings, add these values from your local `.env`:
+1. Push the project to a GitHub repository. Netlify uses the included
+   `netlify.toml` to deploy the Flask app as a function and route requests to it.
+2. In the [Netlify Dashboard](https://app.netlify.com), choose **Add new site >
+   Import an existing project** and connect the repository. Keep the base
+   directory and build command empty; the publish directory is `public`.
+3. In the site's environment variable settings, add
    `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and
-   `FLASK_SECRET_KEY`. Set `COOKIE_SECURE` to `true`. Add the values in the
-   dashboard; do not commit `.env`.
-6. Deploy. Wait for the build to finish, then open the Render-provided
-   `https://<service-name>.onrender.com` address and test sign-up, login, and
-   request submission.
+   `FLASK_SECRET_KEY` using values from your local `.env`. Set
+   `COOKIE_SECURE` to `true`. Generate a long random Flask secret, and never
+   commit `.env` or expose the Supabase service-role key to frontend code.
+4. Deploy the site. Open its `https://<site-name>.netlify.app` URL and test
+   sign-up, login, and request submission.
+5. In Supabase **Authentication > URL Configuration**, set the **Site URL** to
+   the Netlify HTTPS URL and add it to the allowed redirect URLs.
 
 ## Use your own domain
 
 1. Buy a domain from a domain registrar if you do not already own one.
-2. In Render, open your web service **Settings > Custom Domains**, choose
-   **Add Custom Domain**, and enter your domain (for example,
-   `ecoroute.example.com`).
-3. At your domain provider, add the DNS records Render displays for that
-   domain. Remove conflicting `AAAA` records if Render's instructions require
-   it.
-4. Return to Render and click **Verify**. Wait until Render verifies the
-   domain and provisions HTTPS.
-5. In Supabase **Authentication > URL Configuration**, set the **Site URL** to
+2. In Netlify, open the site's **Domain management** settings and add your
+   custom domain.
+3. At your domain provider, add the DNS records Netlify displays. Wait for
+   Netlify to verify the domain and provision HTTPS.
+4. In Supabase **Authentication > URL Configuration**, set the **Site URL** to
    your production `https://` domain and add it to the allowed redirect URLs.
-6. Open the custom HTTPS domain and test the complete sign-up/login flow.
+5. Open the custom HTTPS domain and test the complete sign-up/login flow.
 
-The generated Render URL can be used without buying a custom domain. Custom
-domain availability and hosting prices depend on your Render plan.
+The generated Netlify URL can be used without buying a custom domain. Custom
+domain availability and hosting prices depend on your Netlify plan.
 
 The app uses Supabase Auth for accounts and its server-side service-role client
 for profiles, requests, audit entries, hubs, and hub connections. The service
