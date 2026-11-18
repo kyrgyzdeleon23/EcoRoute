@@ -1,18 +1,21 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
-import json
-import math
 import os
+import re
 import secrets
 import uuid
-from urllib.request import urlopen
 
 from flask import Flask, jsonify, render_template, request, session
 
 from data_algorithm import (
+    distance_km,
     divide_and_conquer_shortest_path,
     exhaustive_shortest_path,
+    filter_and_sort_requests,
     greedy_shortest_path,
+    nearest_hub,
+    priority_score,
+    road_route,
 )
 from data_structures import AVLInventoryTree, EwastePriorityQueue, Graph
 from supabase_store import (
@@ -66,6 +69,7 @@ ITEMS = {
 
 REQUESTS = {}
 AUDIT_LOG = []
+PROFILE_PHONES = {}
 
 
 def current_user():
@@ -76,6 +80,7 @@ def current_user():
         "id": user_id,
         "name": session["name"],
         "role": session["role"],
+        "phone": session.get("phone") or PROFILE_PHONES.get(user_id, ""),
     }
 
 
@@ -183,50 +188,6 @@ def protected(role=None):
     return decorator
 
 
-def priority_score(request_item):
-    """Greedily rank requests using urgency, hazard, and weight scores."""
-    return request_item["urgency"] * 3 + request_item["hazard"] * 2 + request_item["weight"] / 10
-
-
-def distance_km(latitude, longitude, hub_latitude, hub_longitude):
-    latitude_scale = 111.0
-    longitude_scale = 111.0 * math.cos(math.radians(latitude))
-    return math.sqrt(((latitude - hub_latitude) * latitude_scale) ** 2 + ((longitude - hub_longitude) * longitude_scale) ** 2)
-
-
-def nearest_hub(latitude, longitude):
-    """Find the nearest hub by recursively dividing the candidates in half.
-
-    Each half returns its closest hub; comparing those two candidates gives
-    the closest hub overall.
-    """
-    def closest_in_range(hubs):
-        if len(hubs) == 1:
-            return hubs[0]
-        midpoint = len(hubs) // 2
-        closest_left = closest_in_range(hubs[:midpoint])
-        closest_right = closest_in_range(hubs[midpoint:])
-        left_distance = distance_km(latitude, longitude, closest_left[1][0], closest_left[1][1])
-        right_distance = distance_km(latitude, longitude, closest_right[1][0], closest_right[1][1])
-        return closest_left if left_distance <= right_distance else closest_right
-
-    name, coordinates = closest_in_range(list(HUBS.items()))
-    return {"name": name, "distance": round(distance_km(latitude, longitude, coordinates[0], coordinates[1]), 2)}
-
-
-def road_route(latitude, longitude, destination):
-    """Use OSRM road routing and fall back to geographic distance if offline."""
-    destination_latitude, destination_longitude = HUBS[destination]
-    fallback = {"distance": round(distance_km(latitude, longitude, destination_latitude, destination_longitude), 2), "duration": None, "source": "geographic estimate"}
-    url = f"https://router.project-osrm.org/route/v1/driving/{longitude},{latitude};{destination_longitude},{destination_latitude}?overview=false"
-    try:
-        with urlopen(url, timeout=4) as response:
-            route = json.load(response)["routes"][0]
-        return {"distance": round(route["distance"] / 1000, 2), "duration": round(route["duration"] / 60), "source": "OSRM road route"}
-    except (OSError, KeyError, IndexError, TypeError, json.JSONDecodeError):
-        return fallback
-
-
 def add_audit(request_id, action):
     user = current_user()
     entry = {
@@ -244,9 +205,9 @@ def add_audit(request_id, action):
 
 def request_route(request_item):
     load_hubs()
-    destination = nearest_hub(request_item["latitude"], request_item["longitude"])
+    destination = nearest_hub(request_item["latitude"], request_item["longitude"], HUBS)
     graph_route = greedy_shortest_path(graph, destination["name"], destination["name"])
-    road = road_route(request_item["latitude"], request_item["longitude"], destination["name"])
+    road = road_route(request_item["latitude"], request_item["longitude"], destination["name"], HUBS)
     return {
         "type": request_item["method"],
         "destination": destination["name"],
@@ -273,7 +234,9 @@ def config():
     user = current_user()
     load_hubs()
     hubs = [{"name": name, "latitude": coordinates[0], "longitude": coordinates[1]} for name, coordinates in HUBS.items()]
-    return jsonify({"categories": ITEMS, "hubs": hubs, "user": user and {"name": user["name"], "role": user["role"]}})
+    return jsonify({"categories": ITEMS, "hubs": hubs, "user": user and {
+        "name": user["name"], "role": user["role"], "phone": user["phone"],
+    }})
 
 
 @app.route("/api/route-preview")
@@ -285,8 +248,8 @@ def route_preview():
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "A valid pinned location is required"}), 400
     load_hubs()
-    destination = nearest_hub(latitude, longitude)
-    road = road_route(latitude, longitude, destination["name"])
+    destination = nearest_hub(latitude, longitude, HUBS)
+    road = road_route(latitude, longitude, destination["name"], HUBS)
     return jsonify({"destination": destination["name"], **road})
 
 
@@ -324,7 +287,7 @@ def add_hub():
     if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
         return jsonify({"error": "The coordinates are outside valid GPS bounds"}), 400
 
-    nearest_name = min(HUBS, key=lambda hub: distance_km(latitude, longitude, HUBS[hub][0], HUBS[hub][1]))
+    nearest_name = nearest_hub(latitude, longitude, HUBS)["name"]
     if is_configured():
         database().table("hubs").insert({
             "name": name,
@@ -399,6 +362,7 @@ def signup():
         "id": user_id,
         "name": name,
         "role": "user",
+        "phone": "",
     }).execute()
     if not result.get("access_token"):
         return jsonify({
@@ -436,7 +400,7 @@ def login():
         return jsonify({"error": "Supabase login did not return a user"}), 502
     rows = (
         database().table("profiles")
-        .select("name,role")
+        .select("name,role,phone")
         .eq("id", user_id)
         .limit(1)
         .execute()
@@ -447,7 +411,12 @@ def login():
     profile = rows[0]
     session.clear()
     session.permanent = True
-    session.update({"user_id": user_id, "name": profile["name"], "role": profile["role"]})
+    session.update({
+        "user_id": user_id,
+        "name": profile["name"],
+        "role": profile["role"],
+        "phone": profile.get("phone") or "",
+    })
     return jsonify({"status": "success", "role": profile["role"], "name": profile["name"]})
 
 
@@ -463,6 +432,13 @@ def add_ewaste():
     data = request.get_json() or {}
     category = data.get("category")
     details = ITEMS.get(category)
+    phone = data.get("phone")
+    if not isinstance(phone, str):
+        return jsonify({"error": "A contact phone number is required"}), 400
+    phone = phone.strip()
+    phone_digits = re.sub(r"[^0-9]", "", phone)
+    if not re.fullmatch(r"\+?[0-9\s().-]{7,20}", phone) or not 7 <= len(phone_digits) <= 15:
+        return jsonify({"error": "Enter a valid phone number with 7 to 15 digits"}), 400
     try:
         latitude = float(data["latitude"])
         longitude = float(data["longitude"])
@@ -470,10 +446,17 @@ def add_ewaste():
         return jsonify({"error": "A valid pinned location is required"}), 400
     if not details or data.get("item") not in details["items"] or data.get("method") not in {"pickup", "dropoff"}:
         return jsonify({"error": "Choose an item and pickup or drop-off"}), 400
+    if data.get("save_phone_default") is True:
+        if is_configured():
+            database().table("profiles").update({"phone": phone}).eq("id", session["user_id"]).execute()
+        else:
+            PROFILE_PHONES[session["user_id"]] = phone
+        session["phone"] = phone
     item_id = str(uuid.uuid4())
     request_item = {
         "id": item_id, "user": session["user_id"], "name": current_user()["name"],
         "category": category, "item": data["item"], "method": data["method"],
+        "phone": phone,
         "latitude": latitude, "longitude": longitude, "weight": details["weight"],
         "hazard": details["hazard"], "urgency": details["hazard"], "status": "Pending",
         "priority_score": 0, "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -497,18 +480,35 @@ def my_requests():
 @protected("admin")
 def admin_requests():
     load_hubs()
-    search = request.args.get("search", "").strip().lower()
+    search = request.args.get("search", "")
     sort_by = request.args.get("sort", "risk")
-    filtered = [
-        item for item in all_requests()
-        if not search or search in item["name"].lower() or search in item["category"].lower() or search in item["item"].lower()
+    ordered = filter_and_sort_requests(all_requests(), search, sort_by, HUBS)
+    status = request.args.get("status", "")
+    method = request.args.get("method", "")
+    hazard = request.args.get("hazard", "")
+    from_date = request.args.get("from_date", "")
+    to_date = request.args.get("to_date", "")
+    if status and status not in {"Pending", "Approved", "Rejected", "Completed"}:
+        return jsonify({"error": "Choose a valid request status"}), 400
+    if method and method not in {"pickup", "dropoff"}:
+        return jsonify({"error": "Choose a valid collection method"}), 400
+    if hazard and hazard not in {"1", "2", "3", "4", "5"}:
+        return jsonify({"error": "Choose a valid hazard level"}), 400
+    try:
+        start = date.fromisoformat(from_date) if from_date else None
+        end = date.fromisoformat(to_date) if to_date else None
+    except ValueError:
+        return jsonify({"error": "Enter valid date filters"}), 400
+    if start and end and start > end:
+        return jsonify({"error": "Start date must be on or before end date"}), 400
+    ordered = [
+        item for item in ordered
+        if (not status or item["status"] == status)
+        and (not method or item["method"] == method)
+        and (not hazard or item["hazard"] == int(hazard))
+        and (not start or date.fromisoformat(item["created_at"][:10]) >= start)
+        and (not end or date.fromisoformat(item["created_at"][:10]) <= end)
     ]
-    if sort_by == "item":
-        ordered = sorted(filtered, key=lambda item: (item["category"].lower(), item["item"].lower()))
-    elif sort_by == "shortest":
-        ordered = sorted(filtered, key=lambda item: (nearest_hub(item["latitude"], item["longitude"])["distance"], -item["hazard"]))
-    else:
-        ordered = sorted(filtered, key=lambda item: (-item["hazard"], -item["priority_score"], item["created_at"]))
     return jsonify([public_request(item) for item in ordered])
 
 

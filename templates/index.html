@@ -198,11 +198,11 @@
     button {
       cursor: pointer;
       border: 0;
-      transition: background-color .18s ease, color .18s ease;
+      transition: background-color .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
     }
 
     button:not(:disabled):hover {
-      animation: button-bounce .5s ease;
+      transform: translateY(-1px);
     }
 
     button:focus-visible {
@@ -214,20 +214,13 @@
       cursor: not-allowed;
     }
 
-    @keyframes button-bounce {
-      0%, 100% { transform: translateY(0); }
-      30% { transform: translateY(-6px); }
-      55% { transform: translateY(0); }
-      75% { transform: translateY(-3px); }
-    }
-
     @media (prefers-reduced-motion: reduce) {
       button {
         transition: none;
       }
 
       button:not(:disabled):hover {
-        animation: none;
+        transform: none;
       }
     }
 
@@ -291,9 +284,11 @@
     .auth h1 {
       max-width: 650px;
       margin-bottom: 14px;
+      color: #fff;
       font-size: clamp(1.45rem, 2.8vw, 2.15rem);
       line-height: 1.15;
       letter-spacing: -.5px;
+      text-shadow: 0 2px 12px #102e1d66;
     }
 
     .intro p.auth-description {
@@ -301,7 +296,7 @@
       margin: 0;
       color: #eef7e7;
       font-size: .9rem;
-      line-height: 1.55;
+      line-height: 1.6;
     }
 
     .auth {
@@ -311,14 +306,65 @@
       min-height: 100vh;
       display: grid;
       grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-      gap: clamp(16px, 2vw, 28px);
+      gap: clamp(28px, 5vw, 72px);
       align-items: center;
-      padding: clamp(24px, 6vw, 72px);
+      padding: clamp(32px, 8vw, 120px);
       color: #fff;
       background: linear-gradient(120deg, var(--leaf), var(--leaf-secondary), var(--leaf-tertiary), var(--leaf));
       background-size: 300% 300%;
-      animation: slow-green-drift 32s ease-in-out infinite alternate;
+      animation: slow-green-drift 46s ease-in-out infinite alternate;
       transition: opacity .32s ease, transform .32s ease;
+    }
+
+    .auth::before {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: url("{{ url_for('static', filename='eco-recycle-background.png') }}") center bottom / min(100%, 1350px) auto no-repeat;
+      content: "";
+      opacity: .20;
+      pointer-events: none;
+    }
+
+    .auth-leaves {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .auth-leaf {
+      position: absolute;
+      top: var(--leaf-top);
+      left: calc(100% + 36px);
+      width: var(--leaf-size);
+      height: calc(var(--leaf-size) * .58);
+      border-radius: 100% 0 100% 0;
+      background: var(--leaf-color);
+      opacity: .3;
+      transform: rotate(35deg);
+      animation: leaf-blow var(--leaf-duration) ease-in-out var(--leaf-delay) infinite;
+      will-change: transform;
+    }
+
+    .auth-leaf::after {
+      position: absolute;
+      top: 50%;
+      left: 14%;
+      width: 72%;
+      height: 1px;
+      background: #ffffffa6;
+      content: "";
+      transform: rotate(-15deg);
+      transform-origin: left center;
+    }
+
+    @keyframes leaf-blow {
+      0% { transform: translate3d(0, 0, 0) rotate(35deg); }
+      30% { transform: translate3d(-35vw, -12px, 0) rotate(100deg); }
+      65% { transform: translate3d(-76vw, 16px, 0) rotate(210deg); }
+      100% { transform: translate3d(-120vw, -8px, 0) rotate(300deg); }
     }
 
     .auth .intro {
@@ -350,8 +396,7 @@
       max-width: 680px;
       justify-self: center;
       padding: clamp(36px, 4vw, 50px);
-      position: relative;
-      left: -34px;
+      box-shadow: 0 10px 25px #00000026;
     }
 
     .auth .eyebrow {
@@ -395,16 +440,30 @@
     }
 
     .tab {
+      position: relative;
       padding: 10px 12px;
       color: var(--muted);
       background: none;
-      border-bottom: 2px solid transparent;
     }
 
     .tab.active {
       color: var(--leaf);
-      border-color: var(--leaf);
       font-weight: 700;
+    }
+
+    .tab::after {
+      position: absolute;
+      right: 12px;
+      bottom: -1px;
+      left: 12px;
+      height: 3px;
+      border-radius: 999px;
+      background: transparent;
+      content: "";
+    }
+
+    .tab.active::after {
+      background: var(--leaf);
     }
 
     label {
@@ -414,6 +473,24 @@
       margin: 15px 0 6px;
     }
 
+    .save-phone-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 500;
+    }
+
+    .save-phone-option input {
+      flex: none;
+      width: 16px;
+      height: 16px;
+      margin: 1px 0 0;
+      accent-color: var(--leaf);
+    }
+
     input, select {
       width: 100%;
       border: 1px solid var(--line);
@@ -421,6 +498,25 @@
       padding: 12px;
       background: #fff;
       color: var(--ink);
+    }
+
+    input:focus-visible,
+    select:focus-visible,
+    a:focus-visible {
+      border-color: var(--leaf);
+      outline: 3px solid #78a98f;
+      outline-offset: 2px;
+    }
+
+    .auth input:focus {
+      border-color: var(--leaf);
+      box-shadow: 0 0 0 3px #388e3c24;
+      outline: none;
+    }
+
+    .auth input:focus-visible {
+      outline: 2px solid var(--leaf-tertiary);
+      outline-offset: 2px;
     }
 
     .primary {
@@ -437,6 +533,16 @@
       background: var(--leaf-secondary);
     }
 
+    .auth .primary {
+      box-shadow: 0 8px 18px #388e3c35;
+      transition: background-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+
+    .auth .primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 22px #388e3c40;
+    }
+
     .confirmation-dialog {
       width: min(440px, calc(100vw - 32px));
       max-width: none;
@@ -451,6 +557,217 @@
     .confirmation-dialog::backdrop {
       background: #17231f80;
       backdrop-filter: blur(3px);
+    }
+
+    .request-map-dialog {
+      width: min(860px, calc(100vw - 32px));
+      max-width: none;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      color: var(--ink);
+      background: var(--white);
+      box-shadow: 0 24px 70px #17231f40;
+    }
+
+    .request-map-dialog::backdrop {
+      background: #17231f80;
+      backdrop-filter: blur(3px);
+    }
+
+    .request-map-content {
+      padding: clamp(18px, 4vw, 28px);
+    }
+
+    .request-map-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .request-map-heading p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .request-map-tools {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .request-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      padding-top: 14px;
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .request-map-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .request-map-legend img {
+      width: 19px;
+      height: 19px;
+      object-fit: contain;
+    }
+
+    .request-map-legend-pin {
+      display: inline-grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border: 2px solid var(--leaf);
+      border-radius: 50%;
+      background: white;
+    }
+
+    .request-map-legend-pin::after {
+      width: 7px;
+      height: 7px;
+      border-radius: 50% 50% 50% 0;
+      background: var(--leaf);
+      content: "";
+      transform: rotate(-45deg);
+    }
+
+    #requestLocationMap {
+      height: min(62vh, 500px);
+      min-height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .view-map-cell {
+      width: 72px;
+      text-align: center;
+    }
+
+    .view-map-button {
+      display: inline-grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      padding: 0;
+      border: 1px solid #c8dfbf;
+      border-radius: 12px;
+      color: var(--leaf);
+      background: var(--mint);
+    }
+
+    .view-map-button:hover {
+      background: #d8ebcc;
+    }
+
+    .view-map-button svg {
+      width: 21px;
+      height: 21px;
+    }
+
+    .resident-contact-button {
+      padding: 2px 0;
+      color: var(--ink);
+      background: none;
+      font-weight: 700;
+      text-align: left;
+      text-decoration: underline;
+      text-decoration-color: var(--line);
+      text-underline-offset: 3px;
+    }
+
+    .resident-contact-button:hover {
+      color: var(--leaf);
+      text-decoration-color: currentColor;
+    }
+
+    .contact-phone-link {
+      display: inline-flex;
+      width: auto;
+      margin: 0;
+      text-decoration: none;
+    }
+
+    .request-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .filter-field {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      color: var(--ink);
+      font-size: .8rem;
+      font-weight: 700;
+    }
+
+    .filter-field input,
+    .filter-field select {
+      font-size: .9rem;
+      font-weight: 400;
+    }
+
+    .request-timeline {
+      display: grid;
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .timeline-event {
+      position: relative;
+      display: grid;
+      grid-template-columns: 9px 1fr;
+      column-gap: 8px;
+      padding: 0 0 9px;
+      font-size: .76rem;
+    }
+
+    .timeline-event::before {
+      z-index: 1;
+      width: 8px;
+      height: 8px;
+      margin-top: 3px;
+      border-radius: 50%;
+      background: var(--leaf-secondary);
+      content: "";
+    }
+
+    .timeline-event:not(:last-child)::after {
+      position: absolute;
+      top: 10px;
+      bottom: 0;
+      left: 3px;
+      width: 2px;
+      background: var(--line);
+      content: "";
+    }
+
+    .timeline-event time {
+      grid-column: 2;
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    .timeline-rejected::before {
+      background: var(--red);
+    }
+
+    .request-action-group .action,
+    .request-action-delete .action {
+      border-radius: var(--radius-control);
     }
 
     .confirmation-content {
@@ -639,7 +956,7 @@
         radial-gradient(ellipse at 100% 0%, #ffffff30, transparent 45%),
         linear-gradient(120deg, var(--leaf), var(--leaf-secondary));
       background-size: 180% 180%, 220% 220%;
-      animation: slow-green-drift 32s ease-in-out infinite alternate;
+      animation: slow-green-drift 46s ease-in-out infinite alternate;
       box-shadow: 0 18px 38px #388e3c26;
     }
 
@@ -730,6 +1047,24 @@
       color: var(--leaf);
     }
 
+    .request-row-updated > td {
+      animation: request-row-highlight 1.2s ease-out;
+    }
+
+    @keyframes request-row-highlight {
+      from { background-color: var(--mint); }
+      to { background-color: transparent; }
+    }
+
+    #locationStatus.location-status-updated {
+      animation: location-status-highlight 1.1s ease-out;
+    }
+
+    @keyframes location-status-highlight {
+      0% { color: var(--leaf); background-color: var(--mint); }
+      100% { color: var(--muted); background-color: transparent; }
+    }
+
     .status.Pending {
       background: #f6e8c9;
       color: var(--amber);
@@ -738,6 +1073,12 @@
     .status.Rejected {
       background: #f7dcd8;
       color: var(--red);
+    }
+
+    .status.Approved,
+    .status.Completed {
+      background: var(--mint);
+      color: var(--leaf);
     }
 
     table {
@@ -912,6 +1253,21 @@
         animation: none;
       }
 
+      .request-row-updated > td,
+      #locationStatus.location-status-updated {
+        animation: none;
+      }
+
+      .auth-leaves {
+        display: none;
+      }
+
+      .auth .primary,
+      .auth .primary:hover {
+        transform: none;
+        transition: none;
+      }
+
       .loading-bar::after,
       .loading-bar-bottom::after {
         width: 100%;
@@ -952,7 +1308,6 @@
       .auth .panel {
         max-width: 500px;
         justify-self: center;
-        left: 0;
       }
 
       .intro p {
@@ -1021,8 +1376,73 @@
         overflow: auto;
       }
 
-      table {
+      table:not(.request-table) {
         min-width: 650px;
+      }
+
+      .request-table {
+        display: block;
+        width: 100%;
+      }
+
+      .request-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+      }
+
+      .request-table tbody {
+        display: grid;
+        gap: 12px;
+      }
+
+      .request-table tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--white);
+      }
+
+      .request-table td {
+        min-width: 0;
+        padding: 9px;
+        border: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .request-table td::before {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        content: attr(data-label);
+      }
+
+      .request-table .request-status-cell,
+      .request-table td[data-label="Item"],
+      .request-table td[data-label="Action"] {
+        grid-column: 1 / -1;
+      }
+
+      .request-table .view-map-cell {
+        text-align: left;
+      }
+
+      .request-map-heading {
+        flex-direction: column;
+      }
+
+      .request-map-tools {
+        width: 100%;
+        justify-content: flex-end;
       }
 
       .hub-layout {
@@ -1035,6 +1455,11 @@
 
       #userMap {
         height: 240px;
+      }
+
+      #requestLocationMap {
+        height: 55vh;
+        min-height: 240px;
       }
     }
   </style>
@@ -1055,6 +1480,14 @@
 
   <!-- Auth View -->
   <main id="authView" class="shell auth">
+    <div class="auth-leaves" aria-hidden="true">
+      <span class="auth-leaf" style="--leaf-top: 13%; --leaf-size: 24px; --leaf-color: #d9efc3; --leaf-duration: 38s; --leaf-delay: -7s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 29%; --leaf-size: 16px; --leaf-color: #a8d58a; --leaf-duration: 43s; --leaf-delay: -18s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 47%; --leaf-size: 21px; --leaf-color: #f0e2a5; --leaf-duration: 41s; --leaf-delay: -11s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 65%; --leaf-size: 14px; --leaf-color: #d9efc3; --leaf-duration: 46s; --leaf-delay: -20s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 82%; --leaf-size: 19px; --leaf-color: #a8d58a; --leaf-duration: 42s; --leaf-delay: -3s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 92%; --leaf-size: 13px; --leaf-color: #f0e2a5; --leaf-duration: 48s; --leaf-delay: -14s;"></span>
+    </div>
     <section class="intro">
       <div class="topbar">
         <div class="brand brand-hero">
@@ -1075,19 +1508,19 @@
 
       <form id="loginForm">
         <label>Email</label>
-        <input id="loginEmail" type="email" required autocomplete="email">
+        <input id="loginEmail" type="email" required autocomplete="email" placeholder="name@example.com">
         <label>Password</label>
-        <input id="loginPassword" type="password" required autocomplete="current-password">
+        <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
         <button class="primary">Enter hub</button>
       </form>
 
       <form id="signupForm" class="hidden">
         <label>Your name</label>
-        <input id="signupName" required>
+        <input id="signupName" required placeholder="Your name">
         <label>Email</label>
-        <input id="signupEmail" type="email" required autocomplete="email">
+        <input id="signupEmail" type="email" required autocomplete="email" placeholder="name@example.com">
         <label>Password</label>
-        <input id="signupPassword" type="password" minlength="6" required>
+        <input id="signupPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="••••••••">
         <button class="primary">Create account</button>
       </form>
 
@@ -1155,6 +1588,10 @@
               <option value="pickup">Please pick it up</option>
             </select>
 
+            <label for="contactPhone">Phone number for collection coordination</label>
+            <input id="contactPhone" name="phone" type="tel" required autocomplete="tel" inputmode="tel" pattern="\+?[0-9(). -]{7,20}" maxlength="20" placeholder="e.g. +63 912 345 6789" title="Enter 7 to 15 digits. You may include a country code, spaces, parentheses, periods, or hyphens.">
+            <label class="save-phone-option"><input id="savePhoneDefault" type="checkbox" checked><span>Save this as my default number for future requests</span></label>
+
             <label>Pin your location</label>
             <div id="userMap"></div>
             <div class="button-row"><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="action reject" id="centerLocation">Center map</button></div>
@@ -1200,7 +1637,7 @@
       <div class="shell">
         <div class="brand">
           <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
-          <span>EcoRoute</span><span class="hint">/ operations</span>
+          <span>EcoRoute</span>
         </div>
         <div class="usernav">
           <span id="adminName"></span>
@@ -1242,16 +1679,53 @@
       </nav>
 
       <section class="panel wide" id="adminToolsSection" data-dashboard-section="adminToolsSection">
-        <div class="card-title"><h3>Request tools</h3><span class="hint">Search and sort with the request data structures</span></div>
-        <div class="hub-layout">
+        <div class="card-title"><h3>Request tools</h3><span class="hint">Search, filter, and sort requests</span></div>
+        <div class="request-filter-grid">
+          <label class="filter-field" for="adminSearch">Search
           <input id="adminSearch" placeholder="Search resident, category, or item">
+          </label>
+          <label class="filter-field" for="adminSort">Sort by
           <select id="adminSort">
             <option value="risk">Sort by risk level</option>
             <option value="item">Sort by item type</option>
             <option value="shortest">Sort by shortest path</option>
           </select>
+          </label>
+          <label class="filter-field" for="adminStatusFilter">Status
+            <select id="adminStatusFilter">
+              <option value="">All statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </label>
+          <label class="filter-field" for="adminMethodFilter">Collection method
+            <select id="adminMethodFilter">
+              <option value="">All methods</option>
+              <option value="pickup">Pickup</option>
+              <option value="dropoff">Drop-off</option>
+            </select>
+          </label>
+          <label class="filter-field" for="adminHazardFilter">Hazard level
+            <select id="adminHazardFilter">
+              <option value="">All levels</option>
+              <option value="5">Level 5</option>
+              <option value="4">Level 4</option>
+              <option value="3">Level 3</option>
+              <option value="2">Level 2</option>
+              <option value="1">Level 1</option>
+            </select>
+          </label>
+          <label class="filter-field" for="adminFromDate">Submitted from
+            <input id="adminFromDate" type="date">
+          </label>
+          <label class="filter-field" for="adminToDate">Submitted through
+            <input id="adminToDate" type="date">
+          </label>
         </div>
-        <div><button class="action reject" id="clearAdminSearch">Clear filters</button></div>
+        <button class="action quiet" id="clearAdminSearch" type="button">Clear filters</button>
+        <p class="hint" id="adminFilterSummary" role="status" aria-live="polite"></p>
       </section>
 
       <div class="grid">
@@ -1313,6 +1787,41 @@
       <div class="confirmation-actions">
         <button class="quiet" id="confirmationCancel" type="button">Cancel</button>
         <button class="primary" id="confirmationAccept" type="button">Confirm</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="requestMapDialog" class="request-map-dialog" aria-labelledby="requestMapTitle" aria-describedby="requestMapDescription">
+    <div class="request-map-content">
+      <div class="request-map-heading">
+        <div>
+          <h2 id="requestMapTitle">Request location</h2>
+          <p id="requestMapDescription"></p>
+        </div>
+        <div class="request-map-tools">
+          <button class="quiet" id="recenterRequestMap" type="button">Center on request</button>
+          <button class="quiet" id="closeRequestMap" type="button" aria-label="Close map">Close</button>
+        </div>
+      </div>
+      <div id="requestLocationMap" role="region" aria-label="Map showing the e-waste request location"></div>
+      <div class="request-map-legend" aria-label="Map legend">
+        <span><i class="request-map-legend-pin" aria-hidden="true"></i>Request location</span>
+        <span><img src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">Drop-off hub</span>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="requestContactDialog" class="confirmation-dialog" aria-labelledby="requestContactTitle" aria-describedby="requestContactMessage">
+    <div class="confirmation-content">
+      <div class="confirmation-brand">
+        <img class="confirmation-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
+        <span>EcoRoute</span>
+      </div>
+      <h2 id="requestContactTitle">Resident contact</h2>
+      <p id="requestContactMessage"></p>
+      <a id="contactCallLink" class="primary contact-phone-link" href="#" hidden>Call resident</a>
+      <div class="confirmation-actions">
+        <button class="quiet" id="closeRequestContact" type="button">Close</button>
       </div>
     </div>
   </dialog>

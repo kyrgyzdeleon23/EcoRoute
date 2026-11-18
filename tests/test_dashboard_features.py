@@ -1,0 +1,118 @@
+import unittest
+import uuid
+from datetime import date
+
+import app as app_module
+
+
+class DashboardFeatureTests(unittest.TestCase):
+    def setUp(self):
+        self.original_is_configured = app_module.is_configured
+        app_module.is_configured = lambda: False
+        self.client = app_module.app.test_client()
+        self.user_id = f"dashboard-test-{uuid.uuid4()}"
+        with self.client.session_transaction() as session:
+            session.update(user_id=self.user_id, name="Test Resident", role="user")
+        self.request_ids = []
+
+    def tearDown(self):
+        for request_id in self.request_ids:
+            app_module.REQUESTS.pop(request_id, None)
+            app_module.pq.remove_request(request_id)
+        app_module.PROFILE_PHONES.pop(self.user_id, None)
+        app_module.is_configured = self.original_is_configured
+
+    def test_admin_request_filters_apply_together(self):
+        today = date.today().isoformat()
+        matching_id = str(uuid.uuid4())
+        other_id = str(uuid.uuid4())
+        self.request_ids.extend((matching_id, other_id))
+        app_module.REQUESTS[matching_id] = {
+            "id": matching_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "category": "Displays & CRT Glass",
+            "item": "CRT monitor",
+            "method": "dropoff",
+            "hazard": 4,
+            "priority_score": 12,
+            "status": "Completed",
+            "created_at": f"{today}T09:00:00",
+        }
+        app_module.REQUESTS[other_id] = {
+            "id": other_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "category": "Small Peripherals & Electronics",
+            "item": "Keyboard",
+            "method": "pickup",
+            "hazard": 2,
+            "priority_score": 6,
+            "status": "Pending",
+            "created_at": f"{today}T10:00:00",
+        }
+        with self.client.session_transaction() as session:
+            session["role"] = "admin"
+
+        response = self.client.get(
+            "/api/admin/requests",
+            query_string={
+                "status": "Completed",
+                "method": "dropoff",
+                "hazard": "4",
+                "from_date": today,
+                "to_date": today,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["id"] for item in response.get_json()], [matching_id])
+
+    def test_admin_request_filters_reject_invalid_date_range(self):
+        with self.client.session_transaction() as session:
+            session["role"] = "admin"
+
+        response = self.client.get(
+            "/api/admin/requests",
+            query_string={"from_date": "2026-11-19", "to_date": "2026-11-18"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_request_can_save_default_contact_number(self):
+        response = self.client.post(
+            "/api/e-waste",
+            json={
+                "category": "Batteries & Energy Storage",
+                "item": "Lithium-ion laptop/phone batteries",
+                "method": "pickup",
+                "phone": "+63 912-345-6789",
+                "save_phone_default": True,
+                "latitude": 14.25,
+                "longitude": 121.15,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.request_ids.append(response.get_json()["id"])
+        self.assertEqual(app_module.PROFILE_PHONES[self.user_id], "+63 912-345-6789")
+        config = self.client.get("/api/config").get_json()
+        self.assertEqual(config["user"]["phone"], "+63 912-345-6789")
+
+    def test_request_rejects_invalid_contact_number(self):
+        response = self.client.post(
+            "/api/e-waste",
+            json={
+                "category": "Batteries & Energy Storage",
+                "item": "Lithium-ion laptop/phone batteries",
+                "method": "pickup",
+                "phone": "call me",
+                "latitude": 14.25,
+                "longitude": 121.15,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,8 +4,12 @@ create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     name text not null,
     role text not null default 'user' check (role in ('user', 'admin')),
+    phone text not null default '',
     created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+    add column if not exists phone text not null default '';
 
 create table if not exists public.requests (
     id text primary key,
