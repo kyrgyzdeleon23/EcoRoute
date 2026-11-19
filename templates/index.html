@@ -305,7 +305,7 @@
       max-width: none;
       min-height: 100vh;
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(380px, 520px);
       gap: clamp(28px, 5vw, 72px);
       align-items: center;
       padding: clamp(32px, 8vw, 120px);
@@ -384,11 +384,49 @@
     }
 
     .auth .brand-logo {
-      width: clamp(96px, 11vw, 148px);
-      height: clamp(96px, 11vw, 148px);
+      width: clamp(72px, 8vw, 112px);
+      height: clamp(72px, 8vw, 112px);
       padding: 8px;
       border-radius: 50%;
       background: #e8f4dc;
+    }
+
+    .password-field {
+      position: relative;
+    }
+
+    .password-field input {
+      padding-right: 58px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-grid;
+      place-items: center;
+      padding: 8px;
+      border-radius: 10px;
+      color: var(--muted);
+      background: transparent;
+      transform: translateY(-50%);
+    }
+
+    .password-toggle:hover {
+      background: var(--mint);
+      color: var(--leaf);
+      transform: translateY(-50%);
+    }
+
+    button.password-toggle:not(:disabled):hover {
+      transform: translateY(-50%);
+    }
+
+    .password-toggle svg {
+      width: 20px;
+      height: 20px;
     }
 
     .auth .panel {
@@ -441,9 +479,14 @@
 
     .tab {
       position: relative;
+      min-height: 44px;
       padding: 10px 12px;
       color: var(--muted);
       background: none;
+    }
+
+    .tab:focus-visible {
+      border-radius: 10px 10px 0 0;
     }
 
     .tab.active {
@@ -655,8 +698,8 @@
 
     .view-map-button {
       display: inline-grid;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       place-items: center;
       padding: 0;
       border: 1px solid #c8dfbf;
@@ -911,6 +954,9 @@
 
     .section-link {
       flex: 0 0 auto;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
       padding: 8px 13px;
       border-radius: 999px;
       color: var(--ink);
@@ -1038,10 +1084,12 @@
     }
 
     .status {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
       padding: 5px 8px;
       border-radius: 999px;
-      font-size: .72rem;
+      font-size: .76rem;
       font-weight: 700;
       background: var(--mint);
       color: var(--leaf);
@@ -1067,18 +1115,38 @@
 
     .status.Pending {
       background: #f6e8c9;
-      color: var(--amber);
+      color: #79520a;
     }
 
     .status.Rejected {
       background: #f7dcd8;
-      color: var(--red);
+      color: #922f25;
     }
 
     .status.Approved,
     .status.Completed {
       background: var(--mint);
+      color: #245e27;
+    }
+
+    .request-details-toggle,
+    .request-details-row {
+      display: none;
+    }
+
+    .request-details-toggle-button {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
       color: var(--leaf);
+      background: var(--mint);
+      font-weight: 700;
+    }
+
+    .request-mobile-method {
+      display: none;
     }
 
     table {
@@ -1102,6 +1170,7 @@
 
     .action {
       padding: 7px 10px;
+      min-height: 44px;
       border-radius: 999px;
       margin: 4px;
       font-size: .75rem;
@@ -1119,7 +1188,7 @@
 
     .request-actions .action {
       width: 100%;
-      min-height: 34px;
+      min-height: 44px;
       margin: 0;
     }
 
@@ -1171,6 +1240,7 @@
 
     .quiet {
       padding: 9px 13px;
+      min-height: 44px;
       border-radius: 999px;
     }
 
@@ -1350,6 +1420,20 @@
         gap: 8px;
       }
 
+      .overview-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .card-title {
+        flex-wrap: wrap;
+        gap: 8px 12px;
+      }
+
+      .dashboard-section-nav {
+        mask-image: linear-gradient(to right, #000 94%, transparent);
+        -webkit-mask-image: linear-gradient(to right, #000 94%, transparent);
+      }
+
       .loading-gear {
         left: 14px;
         bottom: 14px;
@@ -1373,11 +1457,53 @@
 
       .panel {
         padding: 20px;
-        overflow: auto;
       }
 
       table:not(.request-table) {
-        min-width: 650px;
+        display: block;
+        width: 100%;
+        min-width: 0;
+      }
+
+      table:not(.request-table) thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+      }
+
+      table:not(.request-table) tbody {
+        display: grid;
+        gap: 10px;
+      }
+
+      table:not(.request-table) tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--white);
+      }
+
+      table:not(.request-table) td {
+        min-width: 0;
+        padding: 8px;
+        border: 0;
+        overflow-wrap: anywhere;
+      }
+
+      table:not(.request-table) td::before {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        content: attr(data-label);
       }
 
       .request-table {
@@ -1408,6 +1534,129 @@
         background: var(--white);
       }
 
+      .request-table tr.has-expanded-details {
+        padding-bottom: 0;
+        border-bottom: 0;
+        border-bottom-right-radius: 0;
+        border-bottom-left-radius: 0;
+      }
+
+      .request-table td[data-label="Method"],
+      .request-table td[data-label="Risk"],
+      .request-table td[data-label="Score"],
+      .request-table td[data-label="Location"],
+      .request-table td[data-label="Action"] {
+        display: none;
+      }
+
+      .request-table td[data-label="Item"] {
+        grid-column: 1 / -1;
+      }
+
+      .request-table .request-status-cell > :not(.status) {
+        display: none;
+      }
+
+      .request-mobile-method {
+        display: inline;
+      }
+
+      .request-details-toggle {
+        grid-column: auto;
+      }
+
+      .request-details-toggle {
+        display: grid;
+        align-self: center;
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        color: var(--leaf);
+        background: var(--mint);
+        font-weight: 700;
+      }
+
+      .request-details-toggle-button {
+        border: 0;
+        background: transparent;
+      }
+
+      .request-table tr.request-details-row {
+        display: none;
+        grid-column: 1 / -1;
+        margin-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+
+      .request-table tr.request-details-row.is-open {
+        display: grid;
+        gap: 8px;
+        margin-top: -12px;
+        padding-top: 0;
+        border-top: 1px solid var(--line);
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+      }
+
+      .request-details-row td {
+        display: block;
+        grid-column: 1 / -1;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .request-details-row td::before {
+        display: none;
+      }
+
+      .request-detail-summary {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .request-details-metrics {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .request-detail-field {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .request-detail-label {
+        color: var(--muted);
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+
+      .request-detail-location {
+        grid-column: 1 / -1;
+      }
+
+      .request-detail-status {
+        display: grid;
+        gap: 8px;
+      }
+
+      .request-details-actions .request-action-group {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .request-details-actions .action {
+        width: 100%;
+        min-height: 44px;
+        margin: 0;
+      }
+
       .request-table td {
         min-width: 0;
         padding: 9px;
@@ -1426,13 +1675,12 @@
         content: attr(data-label);
       }
 
-      .request-table .request-status-cell,
-      .request-table td[data-label="Item"],
-      .request-table td[data-label="Action"] {
-        grid-column: 1 / -1;
+      .request-table .request-status-cell {
+        grid-column: auto;
       }
 
       .request-table .view-map-cell {
+        width: auto;
         text-align: left;
       }
 
@@ -1462,10 +1710,32 @@
         min-height: 240px;
       }
     }
+
+    @media (max-width: 600px) {
+      .shell {
+        padding-right: 16px;
+        padding-left: 16px;
+      }
+
+      .dashboard {
+        gap: 18px;
+        padding-top: 24px;
+      }
+
+      .panel {
+        padding: 16px;
+        border-radius: 20px;
+      }
+
+      .request-filter-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div id="loadingBar" class="loading-bar" role="progressbar" aria-label="Processing" aria-valuetext="Idle" hidden>
+  <div id="loadingBar" class="loading-bar" role="progressbar" aria-label="Processing" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Idle" aria-busy="false" hidden>
     <span class="visually-hidden">Processing your request</span>
   </div>
   <div id="loadingBarBottom" class="loading-bar loading-bar-bottom" aria-hidden="true" hidden></div>
@@ -1487,6 +1757,12 @@
       <span class="auth-leaf" style="--leaf-top: 65%; --leaf-size: 14px; --leaf-color: #d9efc3; --leaf-duration: 46s; --leaf-delay: -20s;"></span>
       <span class="auth-leaf" style="--leaf-top: 82%; --leaf-size: 19px; --leaf-color: #a8d58a; --leaf-duration: 42s; --leaf-delay: -3s;"></span>
       <span class="auth-leaf" style="--leaf-top: 92%; --leaf-size: 13px; --leaf-color: #f0e2a5; --leaf-duration: 48s; --leaf-delay: -14s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 6%; --leaf-size: 18px; --leaf-color: #b8dda0; --leaf-duration: 50s; --leaf-delay: -25s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 21%; --leaf-size: 27px; --leaf-color: #edf5bf; --leaf-duration: 44s; --leaf-delay: -32s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 38%; --leaf-size: 12px; --leaf-color: #8cc66c; --leaf-duration: 39s; --leaf-delay: -9s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 56%; --leaf-size: 26px; --leaf-color: #e4efb4; --leaf-duration: 47s; --leaf-delay: -37s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 74%; --leaf-size: 17px; --leaf-color: #b5d993; --leaf-duration: 40s; --leaf-delay: -28s;"></span>
+      <span class="auth-leaf" style="--leaf-top: 87%; --leaf-size: 23px; --leaf-color: #f2efc1; --leaf-duration: 52s; --leaf-delay: -41s;"></span>
     </div>
     <section class="intro">
       <div class="topbar">
@@ -1501,26 +1777,38 @@
     </section>
 
     <section class="panel">
-      <div class="tabs">
-        <button class="tab active" data-mode="login">Log in</button>
-        <button class="tab" data-mode="signup">Create account</button>
+      <div class="tabs" role="tablist" aria-label="Account access">
+        <button id="loginTab" class="tab active" role="tab" aria-selected="true" aria-controls="loginForm" data-mode="login" tabindex="0">Log in</button>
+        <button id="signupTab" class="tab" role="tab" aria-selected="false" aria-controls="signupForm" data-mode="signup" tabindex="-1">Create account</button>
       </div>
 
-      <form id="loginForm">
-        <label>Email</label>
+      <form id="loginForm" role="tabpanel" aria-labelledby="loginTab" tabindex="0">
+        <label for="loginEmail">Email</label>
         <input id="loginEmail" type="email" required autocomplete="email" placeholder="name@example.com">
-        <label>Password</label>
-        <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
-        <button class="primary">Enter hub</button>
+        <label for="loginPassword">Password</label>
+        <div class="password-field">
+          <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
+          <button class="password-toggle" type="button" data-password-toggle="loginPassword" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+            <svg class="eye-closed hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a13.6 13.6 0 0 1-2.1 2.7M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 2-.2 2.8-.5M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <button class="primary" type="submit">Log in</button>
       </form>
 
-      <form id="signupForm" class="hidden">
-        <label>Your name</label>
+      <form id="signupForm" class="hidden" role="tabpanel" aria-labelledby="signupTab" tabindex="0">
+        <label for="signupName">Your name</label>
         <input id="signupName" required placeholder="Your name">
-        <label>Email</label>
+        <label for="signupEmail">Email</label>
         <input id="signupEmail" type="email" required autocomplete="email" placeholder="name@example.com">
-        <label>Password</label>
-        <input id="signupPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="••••••••">
+        <label for="signupPassword">Password</label>
+        <div class="password-field">
+          <input id="signupPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="••••••••">
+          <button class="password-toggle" type="button" data-password-toggle="signupPassword" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+            <svg class="eye-closed hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a13.6 13.6 0 0 1-2.1 2.7M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 2-.2 2.8-.5M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
         <button class="primary">Create account</button>
       </form>
 
@@ -1730,7 +2018,7 @@
 
       <div class="grid">
         <section class="panel wide" id="adminQueueSection" data-dashboard-section="adminQueueSection">
-          <div class="card-title"><h3>Active request queue</h3></div>
+          <div class="card-title"><h3>Active request queue</h3><button class="quiet" id="refreshQueue" type="button">Refresh queue</button></div>
           <div id="adminRequests"></div>
         </section>
         <section class="panel wide" id="adminHistorySection" data-dashboard-section="adminHistorySection">

@@ -23,6 +23,8 @@ function updateLoadingBar() {
   const isLoading = pendingApiRequests > 0;
   loadingBar.hidden = !isLoading;
   loadingBarBottom.hidden = !isLoading;
+  loadingBar.setAttribute("aria-busy", String(isLoading));
+  loadingBar.setAttribute("aria-valuenow", isLoading ? "50" : "0");
   loadingBar.setAttribute("aria-valuetext", isLoading ? "Processing request" : "Idle");
   loadingGear.hidden = !isLoading;
 }
@@ -47,7 +49,7 @@ function notify(message, type = "success") {
   notification.append(text, dismiss);
   stack.append(notification);
   while (stack.children.length > 4) stack.firstElementChild.remove();
-  window.setTimeout(() => notification.remove(), 6000);
+  window.setTimeout(() => notification.remove(), 10000);
 }
 
 async function withButtonLoading(button, loadingText, action) {
@@ -181,16 +183,20 @@ function lifecycleSummary(item) {
   }).join("")}</ol>`;
 }
 
-function requestMapAction(item) {
+function requestMapContent(item) {
   const latitude = Number(item.latitude);
   const longitude = Number(item.longitude);
   if (item.latitude == null || item.longitude == null
     || !Number.isFinite(latitude) || !Number.isFinite(longitude)
     || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-    return '<td class="view-map-cell" data-label="Location"><span class="hint" title="No map location was saved for this request">No pinned location</span></td>';
+    return '<span class="hint" title="No map location was saved for this request">No pinned location</span>';
   }
   const label = `${item.item} · ${item.name}`;
-  return `<td class="view-map-cell" data-label="Location"><button class="view-map-button" type="button" data-request-map data-request-id="${escapeHtml(item.id)}" data-latitude="${latitude}" data-longitude="${longitude}" data-location-label="${escapeHtml(label)}" aria-label="View map for request ${escapeHtml(item.id)}" title="View location on map"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18.5 3.8 21V5.5L9 3l6 2.5L20.2 3v15.5L15 21l-6-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 3v15.5M15 5.5V21" stroke="currentColor" stroke-width="1.7"/><path d="M12 8.2a2.1 2.1 0 0 0-2.1 2.1c0 1.5 2.1 3.8 2.1 3.8s2.1-2.3 2.1-3.8A2.1 2.1 0 0 0 12 8.2Z" fill="var(--leaf)" stroke="var(--white)" stroke-width=".8"/></svg></button></td>`;
+  return `<button class="view-map-button" type="button" data-request-map data-request-id="${escapeHtml(item.id)}" data-latitude="${latitude}" data-longitude="${longitude}" data-location-label="${escapeHtml(label)}" aria-label="View map for request ${escapeHtml(item.id)}" title="View location on map"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18.5 3.8 21V5.5L9 3l6 2.5L20.2 3v15.5L15 21l-6-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 3v15.5M15 5.5V21" stroke="currentColor" stroke-width="1.7"/><path d="M12 8.2a2.1 2.1 0 0 0-2.1 2.1c0 1.5 2.1 3.8 2.1 3.8s2.1-2.3 2.1-3.8A2.1 2.1 0 0 0 12 8.2Z" fill="var(--leaf)" stroke="var(--white)" stroke-width=".8"/></svg></button>`;
+}
+
+function requestMapAction(item) {
+  return `<td class="view-map-cell" data-label="Location">${requestMapContent(item)}</td>`;
 }
 
 function residentCell(item, admin) {
@@ -198,17 +204,36 @@ function residentCell(item, admin) {
   return `<td data-label="Resident"><button class="resident-contact-button" type="button" data-resident-contact data-resident-name="${escapeHtml(item.name)}" data-phone="${escapeHtml(item.phone || "")}" aria-label="View contact information for ${escapeHtml(item.name)}">${escapeHtml(item.name)}</button></td>`;
 }
 
-function adminActions(item, admin) {
-  if (!admin) return "";
+function requestReference(item) {
+  return item.request_number || `ER-${String(item.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`;
+}
+
+function adminActionButtons(item) {
   let actions = "";
   if (item.status === "Pending") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','approve',this)">Approve</button><button type="button" class="action reject" onclick="updateRequest('${item.id}','reject',this)">Reject</button>`;
   if (item.status === "Approved") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','complete',this)">Confirm ${item.method === "dropoff" ? "drop-off" : "pickup"}</button>`;
-  return `<td class="request-actions" data-label="Action">${actions ? `<div class="request-action-group">${actions}</div>` : ""}<div class="request-action-delete"><button type="button" class="action reject" onclick="deleteRequest('${item.id}',this)">Delete</button></div></td>`;
+  return `${actions ? `<div class="request-action-group">${actions}</div>` : ""}<div class="request-action-delete"><button type="button" class="action reject" onclick="deleteRequest('${item.id}',this)">Delete</button></div>`;
 }
 
-function requestTable(items, admin = false, emptyMessage = "No requests yet.") {
+function adminActions(item, admin) {
+  if (!admin) return "";
+  return `<td class="request-actions" data-label="Action">${adminActionButtons(item)}</td>`;
+}
+
+function requestTable(items, admin = false, emptyMessage = "No requests yet.", history = false) {
   if (!items.length) return `<p class="empty">${escapeHtml(emptyMessage)}</p>`;
-  return `<table class="request-table"><thead><tr><th>Request</th><th>Resident</th><th>Item</th><th>Method</th><th>Risk</th><th>Score</th><th>Status</th><th>Location</th>${admin ? "<th>Action</th>" : ""}</tr></thead><tbody>${items.map((item) => `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">#${escapeHtml(item.id)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}</td><td data-label="Method">${escapeHtml(item.method)}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}</td>${requestMapAction(item)}${adminActions(item, admin)}</tr>`).join("")}</tbody></table>`;
+  const statusIcon = {
+    Pending: "&#8987;",
+    Approved: "&#10003;",
+    Rejected: "&#10007;",
+    Completed: "&#10003;",
+  };
+  return `<table class="request-table${history ? " admin-history-table" : ""}"><thead><tr><th>Request</th><th>Resident</th><th>Item</th><th>Method</th><th>Risk</th><th>Score</th><th>Status</th><th>Location</th>${admin ? "<th>Action</th>" : ""}</tr></thead><tbody>${items.map((item) => {
+    const reference = requestReference(item);
+    const mobileMethod = item.method === "dropoff" ? "drop-off" : "pickup";
+    const statusDetails = `${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}`;
+    return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method"> · ${mobileMethod}</span></td><td data-label="Method">${escapeHtml(item.method)}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
+  }).join("")}</tbody></table>`;
 }
 
 function updateOverview(prefix, requests) {
@@ -270,17 +295,17 @@ async function loadAdmin() {
     ? `${requests.length} matching request${requests.length === 1 ? "" : "s"}`
     : `Showing all ${requests.length} request${requests.length === 1 ? "" : "s"}`;
   $("#adminRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)), true, "No active requests match these filters.");
-  $("#adminHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), true, "No history requests match these filters.");
+  $("#adminHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), true, "No history requests match these filters.", true);
 }
 
 async function loadInventorySummary() {
   const summary = await api("/api/admin/inventory-summary");
-  $("#inventorySummary").innerHTML = `<p class="hint">${summary.total_items} completed items · ${summary.total_weight} kg total</p>${summary.categories.length ? `<table><thead><tr><th>Category</th><th>Items</th><th>Total weight</th><th>Hazard total</th></tr></thead><tbody>${summary.categories.map((category) => `<tr><td>${escapeHtml(category.category)}</td><td>${category.item_count}</td><td>${category.total_weight} kg</td><td>${category.hazard_total}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No completed inventory yet.</p>'}`;
+  $("#inventorySummary").innerHTML = `<p class="hint">${summary.total_items} completed items · ${summary.total_weight} kg total</p>${summary.categories.length ? `<table><thead><tr><th>Category</th><th>Items</th><th>Total weight</th><th>Hazard total</th></tr></thead><tbody>${summary.categories.map((category) => `<tr><td data-label="Category">${escapeHtml(category.category)}</td><td data-label="Items">${category.item_count}</td><td data-label="Total weight">${category.total_weight} kg</td><td data-label="Hazard total">${category.hazard_total}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No completed inventory yet.</p>'}`;
 }
 
 async function loadAuditHistory() {
   const entries = await api("/api/admin/audit");
-  $("#auditHistory").innerHTML = entries.length ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th></tr></thead><tbody>${entries.map((entry) => `<tr><td>#${entry.request_id}</td><td>${escapeHtml(entry.action)}</td><td>${escapeHtml(entry.admin)}</td><td>${escapeHtml(entry.timestamp.replace("T", " "))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No admin actions yet.</p>';
+  $("#auditHistory").innerHTML = entries.length ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th></tr></thead><tbody>${entries.map((entry) => `<tr><td data-label="Request">#${entry.request_id}</td><td data-label="Action">${escapeHtml(entry.action)}</td><td data-label="Admin">${escapeHtml(entry.admin)}</td><td data-label="Timestamp">${escapeHtml(entry.timestamp.replace("T", " "))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No admin actions yet.</p>';
 }
 
 setInterval(() => {
@@ -336,6 +361,13 @@ function renderHubList() {
 }
 
 async function authenticate(url, payload) {
+  const form = url.endsWith("/login") ? $("#loginForm") : $("#signupForm");
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = url.endsWith("/login") ? "Logging in..." : "Creating account...";
+  }
+  form.setAttribute("aria-busy", "true");
   try {
     const data = await api(url, { method: "POST", body: JSON.stringify(payload) });
     if (data.status === "confirmation_required") {
@@ -345,16 +377,54 @@ async function authenticate(url, payload) {
     showApp({ name: data.name || payload.name, role: data.role || "user" });
   } catch (error) {
     $("#authError").textContent = error.message;
+  } finally {
+    form.setAttribute("aria-busy", "false");
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = url.endsWith("/login") ? "Log in" : "Create account";
+    }
   }
 }
 
-document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
-  document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-  tab.classList.add("active");
+function activateAuthTab(tab, focus = false) {
+  document.querySelectorAll(".tab").forEach((item) => {
+    const active = item === tab;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-selected", String(active));
+    item.tabIndex = active ? 0 : -1;
+  });
   $("#loginForm").classList.toggle("hidden", tab.dataset.mode !== "login");
   $("#signupForm").classList.toggle("hidden", tab.dataset.mode !== "signup");
   $("#authError").textContent = "";
-}));
+  if (focus) tab.focus();
+}
+
+document.querySelectorAll(".tab").forEach((tab, index, tabs) => {
+  tab.addEventListener("click", () => activateAuthTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabItems = Array.from(document.querySelectorAll(".tab"));
+    let nextIndex = tabItems.indexOf(tab);
+    if (event.key === "ArrowLeft") nextIndex = (nextIndex - 1 + tabItems.length) % tabItems.length;
+    if (event.key === "ArrowRight") nextIndex = (nextIndex + 1) % tabItems.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabItems.length - 1;
+    activateAuthTab(tabItems[nextIndex], true);
+  });
+});
+
+document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {
+  toggle.addEventListener("click", () => {
+    const input = document.getElementById(toggle.dataset.passwordToggle);
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    toggle.querySelector(".eye-open")?.classList.toggle("hidden", showing);
+    toggle.querySelector(".eye-closed")?.classList.toggle("hidden", !showing);
+    toggle.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+    toggle.setAttribute("aria-pressed", String(!showing));
+  });
+});
 
 $("#loginForm").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -424,6 +494,7 @@ $("#requestForm").addEventListener("submit", async (event) => {
   const submitButton = $("#requestSubmit");
   submitButton.disabled = true;
   submitButton.textContent = "Saving request...";
+  event.target.setAttribute("aria-busy", "true");
   $("#requestConfirmation").textContent = "";
   const phone = $("#contactPhone").value.trim();
   const savePhoneDefault = $("#savePhoneDefault").checked;
@@ -446,6 +517,7 @@ $("#requestForm").addEventListener("submit", async (event) => {
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Submit request";
+    event.target.setAttribute("aria-busy", "false");
   }
 });
 
@@ -467,6 +539,21 @@ $("#recenterRequestMap").addEventListener("click", () => {
 $("#closeRequestContact").addEventListener("click", () => $("#requestContactDialog").close());
 ["#userRequests", "#userHistory", "#adminRequests", "#adminHistory"].forEach((selector) => {
   $(selector).addEventListener("click", (event) => {
+    const detailsButton = event.target.closest("[data-request-details]");
+    if (detailsButton) {
+      const row = detailsButton.closest("tr");
+      const detailsRow = row.nextElementSibling?.matches("[data-details-row]")
+        ? row.nextElementSibling
+        : null;
+      if (detailsRow) {
+        const open = detailsRow.classList.toggle("is-open");
+        row.classList.toggle("has-expanded-details", open);
+        detailsButton.setAttribute("aria-expanded", String(open));
+        detailsButton.textContent = open ? "Hide" : "Details";
+      }
+      return;
+    }
+
     const mapButton = event.target.closest("[data-request-map]");
     if (mapButton) {
       const latitude = Number(mapButton.dataset.latitude);
@@ -481,7 +568,9 @@ $("#closeRequestContact").addEventListener("click", () => $("#requestContactDial
         longitude,
         label: mapButton.dataset.locationLabel,
       };
-      $("#requestMapTitle").textContent = `Request #${mapButton.dataset.requestId}`;
+      const requestRow = mapButton.closest("[data-request-id]");
+      const visibleReference = requestRow?.querySelector('[data-label="Request"]')?.textContent.trim();
+      $("#requestMapTitle").textContent = visibleReference ? `Request ${visibleReference}` : "Request location";
       $("#requestMapDescription").textContent = `${mapButton.dataset.locationLabel} · ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
       $("#requestMapDialog").showModal();
       window.requestAnimationFrame(() => EcoRouteMap.showRequestLocation(latitude, longitude, activeRequestLocation.label, config.hubs));
@@ -511,6 +600,12 @@ $("#refreshAdmin").addEventListener("click", (event) => {
   withButtonLoading(event.currentTarget, "Refreshing...", loadAdmin)
     .catch((error) => notify(`Queue could not be refreshed: ${error.message}`, "error"));
 });
+if ($("#refreshQueue")) {
+  $("#refreshQueue").addEventListener("click", (event) => {
+    withButtonLoading(event.currentTarget, "Refreshing...", loadAdmin)
+      .catch((error) => notify(`Queue could not be refreshed: ${error.message}`, "error"));
+  });
+}
 function refreshAdminResults() {
   loadAdmin().catch((error) => notify(`Requests could not be filtered: ${error.message}`, "error"));
 }
@@ -562,6 +657,7 @@ $("#hubForm").addEventListener("submit", async (event) => {
     `Add "${hubName}" as a drop-off location?`,
     { confirmLabel: "Add location" },
   )) return;
+  event.target.setAttribute("aria-busy", "true");
   await withButtonLoading($("#hubForm button[type=submit]"), "Adding location...", async () => {
     try {
       await api("/api/admin/hubs", { method: "POST", body: JSON.stringify({ name: $("#hubName").value, latitude: $("#hubLatitude").value, longitude: $("#hubLongitude").value }) });
@@ -576,6 +672,7 @@ $("#hubForm").addEventListener("submit", async (event) => {
       notify(`Hub could not be added: ${error.message}`, "error");
     }
   });
+  event.target.setAttribute("aria-busy", "false");
 });
 
 window.updateRequest = async (id, action, button) => {

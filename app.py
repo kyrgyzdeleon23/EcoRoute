@@ -358,12 +358,13 @@ def signup():
     user_id = auth_user.get("id")
     if not user_id:
         return jsonify({"error": "Supabase signup did not return a user"}), 502
-    database().table("profiles").upsert({
-        "id": user_id,
-        "name": name,
-        "role": "user",
-        "phone": "",
-    }).execute()
+    if is_configured():
+        database().table("profiles").upsert({
+            "id": user_id,
+            "name": name,
+            "role": "user",
+            "phone": "",
+        }).execute()
     if not result.get("access_token"):
         return jsonify({
             "status": "confirmation_required",
@@ -371,7 +372,7 @@ def signup():
         })
     session.clear()
     session.permanent = True
-    session.update({"user_id": user_id, "name": name, "role": "user"})
+    session.update({"user_id": user_id, "name": name, "role": "user", "phone": ""})
     return jsonify({"status": "success", "role": "user", "name": name})
 
 
@@ -453,9 +454,17 @@ def add_ewaste():
             PROFILE_PHONES[session["user_id"]] = phone
         session["phone"] = phone
     item_id = str(uuid.uuid4())
+    method = data["method"]
+    method_count = sum(
+        1 for existing in all_requests()
+        if existing.get("method") == method
+    )
+    reference_prefix = "PU" if method == "pickup" else "DO"
+    request_number = f"{reference_prefix}-{method_count + 1:04d}"
     request_item = {
         "id": item_id, "user": session["user_id"], "name": current_user()["name"],
-        "category": category, "item": data["item"], "method": data["method"],
+        "category": category, "item": data["item"], "method": method,
+        "request_number": request_number,
         "phone": phone,
         "latitude": latitude, "longitude": longitude, "weight": details["weight"],
         "hazard": details["hazard"], "urgency": details["hazard"], "status": "Pending",
