@@ -27,11 +27,12 @@ const edgeRows = [
   { hub_a: "Bulacan Baliwag", hub_b: "Lucban Quezon", distance: 130 },
 ];
 
-function createSupabaseMock({ requests = [] } = {}) {
+function createSupabaseMock({ requests = [], audits = [] } = {}) {
   const store = {
     requests: structuredClone(requests),
     profiles: [],
-    audits: [],
+    audits: structuredClone(audits).map((data, index) => ({ id: String(index + 1), data })),
+    nextAuditId: audits.length + 1,
     hubs: structuredClone(hubRows),
     edges: structuredClone(edgeRows),
   };
@@ -84,9 +85,16 @@ function createSupabaseMock({ requests = [] } = {}) {
     }
     if (table === "audit_log") {
       if (init.method === "POST") {
-        store.audits.push(JSON.parse(init.body));
+        store.audits.push({ id: String(store.nextAuditId++), ...JSON.parse(init.body) });
         return new Response(null, { status: 204 });
       }
+      if (init.method === "DELETE") {
+        const id = url.searchParams.get("id")?.slice(3);
+        store.audits = store.audits.filter((entry) => entry.id !== id);
+        return new Response(null, { status: 204 });
+      }
+      const id = url.searchParams.get("id")?.slice(3);
+      if (id) return Response.json(store.audits.filter((entry) => entry.id === id));
       return Response.json(store.audits);
     }
     throw new Error(`Unexpected Supabase request: ${url}`);
@@ -198,6 +206,71 @@ test("request submission validates contact numbers and stores valid requests", a
   assert.equal(store.requests[0].owner_id, "user-id");
   assert.equal(store.requests[0].data.status, "Pending");
   assert.equal(valid.headers.get("set-cookie").includes("Secure"), true);
+});
+
+test("admin rejection requires and stores a reason", async () => {
+  const { fetchImpl, store } = createSupabaseMock({
+    requests: [{
+      id: "reject-me",
+      owner_id: "user-id",
+      data: {
+        id: "reject-me",
+        name: "Test Resident",
+        category: "Small Peripherals & Electronics",
+        item: "Keyboard",
+        method: "pickup",
+        status: "Pending",
+        created_at: "2026-11-20T10:00:00",
+      },
+    }],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const cookie = await login(handler, "admin@example.com");
+
+  const missingReason = await handler(makeRequest("/api/admin/requests/reject-me", {
+    method: "POST",
+    cookie,
+    body: { action: "reject" },
+  }));
+  assert.equal(missingReason.status, 400);
+
+  const rejected = await handler(makeRequest("/api/admin/requests/reject-me", {
+    method: "POST",
+    cookie,
+    body: { action: "reject", reason: "The pickup location is outside our service area." },
+  }));
+  assert.equal(rejected.status, 200);
+  assert.equal((await rejected.json()).request.rejection_reason, "The pickup location is outside our service area.");
+  assert.equal(store.requests[0].data.rejection_reason, "The pickup location is outside our service area.");
+});
+
+test("admins can permanently delete audit-history entries", async () => {
+  const { fetchImpl } = createSupabaseMock({
+    audits: [{
+      request_id: "deleted-request",
+      action: "deleted",
+      admin: "Test Admin",
+      timestamp: "2026-11-20T10:00:00",
+    }],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const residentCookie = await login(handler);
+  const cookie = await login(handler, "admin@example.com");
+
+  const listed = await handler(makeRequest("/api/admin/audit", { cookie }));
+  assert.equal((await listed.json())[0].audit_id, "1");
+
+  const forbidden = await handler(makeRequest("/api/admin/audit/1", {
+    method: "DELETE",
+    cookie: residentCookie,
+  }));
+  assert.equal(forbidden.status, 403);
+
+  const deleted = await handler(makeRequest("/api/admin/audit/1", { method: "DELETE", cookie }));
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(await deleted.json(), { status: "success", audit_id: "1" });
+  const remaining = await handler(makeRequest("/api/admin/audit", { cookie }));
+  assert.deepEqual(await remaining.json(), []);
 });
 
 test("admin request filters apply together and reject invalid date ranges", async () => {

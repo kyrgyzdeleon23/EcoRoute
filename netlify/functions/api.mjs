@@ -891,6 +891,15 @@ async function handleApi(request, fetchImpl, env) {
     if (!["approve", "reject", "complete"].includes(data.action)) {
       throw new ApiError(400, "Invalid action");
     }
+    if (data.action === "reject") {
+      if (typeof data.reason !== "string" || !data.reason.trim()) {
+        throw new ApiError(400, "A rejection reason is required");
+      }
+      item.rejection_reason = data.reason.trim();
+      if (item.rejection_reason.length > 500) {
+        throw new ApiError(400, "The rejection reason must be 500 characters or fewer");
+      }
+    }
     if (data.action === "complete") {
       if (item.status !== "Approved") {
         throw new ApiError(400, "Only approved requests can be completed");
@@ -966,12 +975,29 @@ async function handleApi(request, fetchImpl, env) {
     });
   }
 
+  const auditMatch = path.match(/^\/api\/admin\/audit\/([^/]+)$/);
+  if (auditMatch && method === "DELETE") {
+    requireUser(session, "admin");
+    const auditId = decodeURIComponent(auditMatch[1]);
+    if (!/^[1-9]\d*$/.test(auditId)) {
+      throw new ApiError(404, "Audit entry not found");
+    }
+    const query = { select: "id", id: `eq.${auditId}`, limit: "1" };
+    const existing = await supabaseRequest(fetchImpl, env, "audit_log", { query });
+    if (!existing?.length) throw new ApiError(404, "Audit entry not found");
+    await supabaseRequest(fetchImpl, env, "audit_log", {
+      method: "DELETE",
+      query: { id: `eq.${auditId}` },
+    });
+    return response({ status: "success", audit_id: auditId });
+  }
+
   if (path === "/api/admin/audit" && method === "GET") {
     requireUser(session, "admin");
     const rows = await supabaseRequest(fetchImpl, env, "audit_log", {
-      query: { select: "data", order: "created_at.desc" },
+      query: { select: "id,data", order: "created_at.desc" },
     });
-    return response((rows || []).map((row) => row.data));
+    return response((rows || []).map((row) => ({ ...row.data, audit_id: String(row.id) })));
   }
 
   const categoryMatch = path.match(/^\/api\/inventory\/(.+)$/);

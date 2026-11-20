@@ -191,6 +191,7 @@ def protected(role=None):
 def add_audit(request_id, action, request_number):
     user = current_user()
     entry = {
+        "audit_id": str(uuid.uuid4()),
         "request_id": request_id,
         "request_number": request_number,
         "action": action,
@@ -534,9 +535,18 @@ def update_request(item_id):
     request_item = get_request(item_id)
     if not request_item:
         return jsonify({"error": "Request not found"}), 404
-    action = (request.get_json() or {}).get("action")
+    data = request.get_json() or {}
+    action = data.get("action")
     if action not in {"approve", "reject", "complete"}:
         return jsonify({"error": "Invalid action"}), 400
+    if action == "reject":
+        reason = data.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            return jsonify({"error": "A rejection reason is required"}), 400
+        reason = reason.strip()
+        if len(reason) > 500:
+            return jsonify({"error": "The rejection reason must be 500 characters or fewer"}), 400
+        request_item["rejection_reason"] = reason
     if action == "complete":
         if request_item["status"] != "Approved":
             return jsonify({"error": "Only approved requests can be completed"}), 400
@@ -615,8 +625,8 @@ def inventory_summary():
 @protected("admin")
 def audit_history():
     if is_configured():
-        rows = database().table("audit_log").select("data").order("created_at", desc=True).execute().data
-        entries = [row["data"] for row in rows]
+        rows = database().table("audit_log").select("id,data").order("created_at", desc=True).execute().data
+        entries = [{**row["data"], "audit_id": str(row["id"])} for row in rows]
     else:
         entries = list(reversed(AUDIT_LOG))
     request_numbers = {
@@ -630,6 +640,28 @@ def audit_history():
         }
         for entry in entries
     ])
+
+
+@app.route("/api/admin/audit/<audit_id>", methods=["DELETE"])
+@protected("admin")
+def delete_audit_entry(audit_id):
+    if is_configured():
+        if not audit_id.isdigit() or int(audit_id) < 1:
+            return jsonify({"error": "Audit entry not found"}), 404
+        audit_id = int(audit_id)
+        existing = database().table("audit_log").select("id").eq("id", audit_id).limit(1).execute().data
+        if not existing:
+            return jsonify({"error": "Audit entry not found"}), 404
+        database().table("audit_log").delete().eq("id", audit_id).execute()
+    else:
+        entry_index = next(
+            (index for index, entry in enumerate(AUDIT_LOG) if entry.get("audit_id") == audit_id),
+            None,
+        )
+        if entry_index is None:
+            return jsonify({"error": "Audit entry not found"}), 404
+        del AUDIT_LOG[entry_index]
+    return jsonify({"status": "success", "audit_id": str(audit_id)})
 
 
 @app.route("/api/inventory/<path:category>")

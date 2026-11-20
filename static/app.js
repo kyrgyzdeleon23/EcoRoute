@@ -13,7 +13,19 @@ if (confirmationDialog && !confirmationDialog.querySelector('form[method="dialog
   const confirmationCancel = $("#confirmationCancel");
   const confirmationAccept = $("#confirmationAccept");
   if (confirmationCancel) confirmationCancel.addEventListener("click", () => confirmationDialog.close("cancel"));
-  if (confirmationAccept) confirmationAccept.addEventListener("click", () => confirmationDialog.close("confirm"));
+  if (confirmationAccept) confirmationAccept.addEventListener("click", () => {
+    const reasonField = $("#confirmationReasonField");
+    const reasonInput = $("#confirmationReason");
+    if (reasonField && !reasonField.hidden && !reasonInput.value.trim()) {
+      $("#confirmationReasonError").hidden = false;
+      reasonInput.focus();
+      return;
+    }
+    confirmationDialog.close("confirm");
+  });
+  $("#confirmationReason").addEventListener("input", () => {
+    if ($("#confirmationReason").value.trim()) $("#confirmationReasonError").hidden = true;
+  });
 }
 
 function updateLoadingBar() {
@@ -80,17 +92,24 @@ function highlightRequestRow(id) {
   if (row) row.classList.add("request-row-updated");
 }
 
-function confirmAction(title, message, { confirmLabel = "Confirm", danger = false } = {}) {
+function confirmAction(title, message, { confirmLabel = "Confirm", danger = false, reasonRequired = false } = {}) {
   const confirmButton = $("#confirmationAccept");
   $("#confirmationTitle").textContent = title;
   $("#confirmationMessage").textContent = message;
   confirmButton.textContent = confirmLabel;
   confirmButton.classList.toggle("confirm-danger", danger);
+  const reasonField = $("#confirmationReasonField");
+  const reasonInput = $("#confirmationReason");
+  reasonField.hidden = !reasonRequired;
+  reasonInput.value = "";
+  reasonInput.required = reasonRequired;
+  $("#confirmationReasonError").hidden = true;
   confirmationDialog.returnValue = "";
 
   return new Promise((resolve) => {
     confirmationDialog.addEventListener("close", () => resolve(confirmationDialog.returnValue === "confirm"), { once: true });
     confirmationDialog.showModal();
+    if (reasonRequired) reasonInput.focus();
   });
 }
 
@@ -159,9 +178,27 @@ function renderItems() {
   $("#item").innerHTML = data.items.map((item) => `<option>${item}</option>`).join("");
 }
 
-function routeSummary(route) {
+function methodBadge(method) {
+  const pickup = method === "pickup";
+  const icon = pickup
+    ? '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7h11v11H3zM14 10h4l3 3v5h-7z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="7" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1.7"/></svg>';
+  return `<span class="method-badge method-badge-${pickup ? "pickup" : "dropoff"}">${icon}${pickup ? "Pickup" : "Drop-off"}</span>`;
+}
+
+function routeSummary(route, item) {
   if (!route) return "";
-  const label = route.type === "pickup" ? "Pickup point" : "Shortest drop-off route";
+  if (route.type === "pickup") {
+    const latitude = Number(item.latitude);
+    const longitude = Number(item.longitude);
+    const coordinates = item.latitude != null && item.longitude != null
+      && Number.isFinite(latitude) && Number.isFinite(longitude)
+      && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
+      ? ` (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
+      : "";
+    return `<div class="hint"><strong>Pickup point:</strong> User's Pinned Location${coordinates}</div>`;
+  }
+  const label = "Shortest drop-off route";
   return `<div class="hint"><strong>${label}:</strong> ${escapeHtml(route.destination)} · ${route.distance} km</div><div class="hint">${route.path.map(escapeHtml).join(" → ")}</div>`;
 }
 
@@ -171,7 +208,12 @@ function approvalGuidance(item) {
       ? '<div class="hint">Awaiting admin approval. Keep this item ready for pickup.</div>'
       : '<div class="hint">Awaiting admin approval. Do not drop off this item yet.</div>';
   }
-  if (item.status === "Rejected") return '<div class="hint">This request was not approved. Please submit a new request if needed.</div>';
+  if (item.status === "Rejected") {
+    const reason = typeof item.rejection_reason === "string" ? item.rejection_reason.trim() : "";
+    return `<div class="hint"><strong>Rejected:</strong> This request was not approved.</div>${reason
+      ? `<div class="hint"><strong>Reason:</strong> ${escapeHtml(reason)}</div>`
+      : '<div class="hint">No rejection reason was recorded.</div>'}`;
+  }
   if (item.status === "Completed") return `<div class="hint"><strong>Completed:</strong> ${item.method === "dropoff" ? "Drop-off confirmed by admin." : "Pickup confirmed by admin."}</div>`;
   if (item.method === "dropoff") return '<div class="hint"><strong>Approved:</strong> You may now take this item to the listed drop-off point.</div>';
   return '<div class="hint"><strong>Approved:</strong> Keep the item ready for collection.</div>';
@@ -183,13 +225,28 @@ function completionSummary(item) {
 
 function lifecycleSummary(item) {
   const events = [["Submitted", item.created_at], ["Approved", item.approved_at], ["Rejected", item.rejected_at], ["Completed", item.completed_at]];
-  return `<ol class="request-timeline" aria-label="Request timeline">${events.filter(([, timestamp]) => timestamp).map(([label, timestamp]) => {
+  let latestEventIndex = -1;
+  let latestEventTime = Number.NEGATIVE_INFINITY;
+  events.forEach(([, timestamp], index) => {
+    if (!timestamp) return;
+    const eventTime = new Date(timestamp).getTime();
+    if (Number.isFinite(eventTime) && eventTime >= latestEventTime) {
+      latestEventIndex = index;
+      latestEventTime = eventTime;
+    }
+  });
+  if (latestEventIndex < 0) {
+    latestEventIndex = events.reduce((latest, [, timestamp], index) => timestamp ? index : latest, -1);
+  }
+  return `<ol class="request-timeline" aria-label="Request timeline">${events.map(([label, timestamp], index) => {
+    if (!timestamp) return "";
     const parsedDate = new Date(timestamp);
     const formattedDate = Number.isNaN(parsedDate.getTime())
       ? timestamp.replace("T", " ")
       : parsedDate.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     const rejected = label === "Rejected";
-    return `<li class="timeline-event${rejected ? " timeline-rejected" : ""}"><span>${label}</span><time datetime="${escapeHtml(timestamp)}">${escapeHtml(formattedDate)}</time></li>`;
+    const latest = index === latestEventIndex;
+    return `<li class="timeline-event${rejected ? " timeline-rejected" : ""}${latest ? " timeline-latest" : ""}"><span>${label}</span><time datetime="${escapeHtml(timestamp)}">${escapeHtml(formattedDate)}</time></li>`;
   }).join("")}</ol>`;
 }
 
@@ -199,7 +256,7 @@ function requestMapContent(item) {
   if (item.latitude == null || item.longitude == null
     || !Number.isFinite(latitude) || !Number.isFinite(longitude)
     || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-    return '<span class="hint" title="No map location was saved for this request">No pinned location</span>';
+    return '<span class="hint" title="No map location was saved for this request">No pinned location was saved with this request.</span>';
   }
   const label = `${item.item} · ${item.name}`;
   return `<button class="view-map-button" type="button" data-request-map data-request-id="${escapeHtml(item.id)}" data-latitude="${latitude}" data-longitude="${longitude}" data-location-label="${escapeHtml(label)}" aria-label="View map for request ${escapeHtml(item.id)}" title="View location on map"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18.5 3.8 21V5.5L9 3l6 2.5L20.2 3v15.5L15 21l-6-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 3v15.5M15 5.5V21" stroke="currentColor" stroke-width="1.7"/><path d="M12 8.2a2.1 2.1 0 0 0-2.1 2.1c0 1.5 2.1 3.8 2.1 3.8s2.1-2.3 2.1-3.8A2.1 2.1 0 0 0 12 8.2Z" fill="var(--leaf)" stroke="var(--white)" stroke-width=".8"/></svg></button>`;
@@ -222,7 +279,10 @@ function adminActionButtons(item) {
   let actions = "";
   if (item.status === "Pending") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','approve',this)">Approve</button><button type="button" class="action reject" onclick="updateRequest('${item.id}','reject',this)">Reject</button>`;
   if (item.status === "Approved") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','complete',this)">Confirm ${item.method === "dropoff" ? "drop-off" : "pickup"}</button>`;
-  return `${actions ? `<div class="request-action-group">${actions}</div>` : ""}<div class="request-action-delete"><button type="button" class="action reject" onclick="deleteRequest('${item.id}',this)">Delete</button></div>`;
+  const actionGroupClass = item.status === "Approved"
+    ? "request-action-group request-action-single"
+    : "request-action-group";
+  return `${actions ? `<div class="${actionGroupClass}">${actions}</div>` : ""}<div class="request-action-delete"><button type="button" class="action reject" onclick="deleteRequest('${item.id}',this)">Delete</button></div>`;
 }
 
 function adminActions(item, admin) {
@@ -240,9 +300,9 @@ function requestTable(items, admin = false, emptyMessage = "No requests yet.", h
   };
   return `<table class="request-table${history ? " admin-history-table" : ""}"><thead><tr><th>Request</th><th>Resident</th><th>Item</th><th>Method</th><th>Risk</th><th>Score</th><th>Status</th><th>Location</th>${admin ? "<th>Action</th>" : ""}</tr></thead><tbody>${items.map((item) => {
     const reference = requestReference(item);
-    const mobileMethod = item.method === "dropoff" ? "drop-off" : "pickup";
-    const statusDetails = `${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}`;
-    return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method"> · ${mobileMethod}</span></td><td data-label="Method">${escapeHtml(item.method)}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status status-updated ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
+    const method = methodBadge(item.method);
+    const statusDetails = `${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route, item)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}`;
+    return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method">${method}</span></td><td data-label="Method">${method}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status status-updated ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -293,8 +353,8 @@ async function loadUser() {
   if (snapshot === lastUserRequestsSnapshot) return;
   lastUserRequestsSnapshot = snapshot;
   updateOverview("user", requests);
-  $("#userRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)), false, "No active requests yet. Submit a request to see it here.");
-  $("#userHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), false, "Completed or rejected requests will appear here.");
+  $("#userRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)), false, "You have no active requests. Submit a collection request above to get started.");
+  $("#userHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), false, "Completed or rejected requests will appear here once they are closed.");
 }
 
 async function loadAdmin() {
@@ -320,8 +380,17 @@ async function loadAdmin() {
   $("#adminFilterSummary").textContent = hasFilters
     ? `${requests.length} matching request${requests.length === 1 ? "" : "s"}`
     : `Showing all ${requests.length} request${requests.length === 1 ? "" : "s"}`;
-  $("#adminRequests").innerHTML = requestTable(requests.filter((item) => !["Completed", "Rejected"].includes(item.status)), true, "No active requests match these filters.");
-  $("#adminHistory").innerHTML = requestTable(requests.filter((item) => ["Completed", "Rejected"].includes(item.status)), true, "No history requests match these filters.", true);
+  $("#adminRequests").innerHTML = requestTable(
+    requests.filter((item) => !["Completed", "Rejected"].includes(item.status)),
+    true,
+    hasFilters ? "No active requests match these filters. Clear filters to see all requests." : "No active requests. New requests awaiting review will appear here.",
+  );
+  $("#adminHistory").innerHTML = requestTable(
+    requests.filter((item) => ["Completed", "Rejected"].includes(item.status)),
+    true,
+    hasFilters ? "No completed or rejected requests match these filters." : "Completed or rejected requests will appear here after they are closed.",
+    true,
+  );
 }
 
 async function loadInventorySummary() {
@@ -331,7 +400,9 @@ async function loadInventorySummary() {
 
 async function loadAuditHistory() {
   const entries = await api("/api/admin/audit");
-  $("#auditHistory").innerHTML = entries.length ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th></tr></thead><tbody>${entries.map((entry) => `<tr><td data-label="Request">${escapeHtml(entry.request_number || "Request number unavailable")}</td><td data-label="Action">${escapeHtml(entry.action)}</td><td data-label="Admin">${escapeHtml(entry.admin)}</td><td data-label="Timestamp">${escapeHtml(entry.timestamp.replace("T", " "))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No admin actions yet.</p>';
+  $("#auditHistory").innerHTML = entries.length
+    ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th><th>Manage</th></tr></thead><tbody>${entries.map((entry) => `<tr><td data-label="Request">${escapeHtml(entry.request_number || "Request number unavailable")}</td><td data-label="Action">${escapeHtml(entry.action)}</td><td data-label="Admin">${escapeHtml(entry.admin)}</td><td data-label="Timestamp">${escapeHtml(entry.timestamp.replace("T", " "))}</td><td data-label="Manage"><button class="action reject" type="button" onclick="deleteAuditEntry('${escapeHtml(entry.audit_id)}',this)" aria-label="Delete audit entry for ${escapeHtml(entry.request_number || "request")}">Delete</button></td></tr>`).join("")}</tbody></table>`
+    : '<p class="empty">No admin actions have been recorded yet. Approvals, rejections, completions, and request deletions will appear here.</p>';
 }
 
 setInterval(() => {
@@ -364,6 +435,10 @@ function setUserCoordinates(latitude, longitude, announce = true) {
 
 async function updateLocationPreview(latitude, longitude) {
   const token = ++routePreviewToken;
+  if (!config.hubs.length) {
+    $("#locationDetails").textContent = "No drop-off hubs are available yet. An administrator must add one before a route can be calculated.";
+    return;
+  }
   $("#locationDetails").textContent = "Calculating nearest hub and road route...";
   try {
     const preview = await api(`/api/route-preview?latitude=${latitude}&longitude=${longitude}`);
@@ -376,7 +451,9 @@ async function updateLocationPreview(latitude, longitude) {
 }
 
 function renderHubList() {
-  $("#hubList").innerHTML = config.hubs.map((hub) => `<div class="hub-row"><span>${escapeHtml(hub.name)}<small>${hub.latitude.toFixed(5)}, ${hub.longitude.toFixed(5)}</small></span><button class="action reject" onclick="removeHub('${escapeHtml(hub.name)}',this)">Remove</button></div>`).join("");
+  $("#hubList").innerHTML = config.hubs.length
+    ? config.hubs.map((hub) => `<div class="hub-row"><span>${escapeHtml(hub.name)}<small>${hub.latitude.toFixed(5)}, ${hub.longitude.toFixed(5)}</small></span><button class="action reject" onclick="removeHub('${escapeHtml(hub.name)}',this)">Remove</button></div>`).join("")
+    : '<p class="empty">No drop-off hubs are available. Add a location using the map or GPS to enable drop-off routes.</p>';
   const options = config.hubs.map((hub) => `<option value="${escapeHtml(hub.name)}">${escapeHtml(hub.name)}</option>`).join("");
   const previousStart = $("#routeStart").value;
   const previousEnd = $("#routeEnd").value;
@@ -437,6 +514,17 @@ document.querySelectorAll(".tab").forEach((tab, index, tabs) => {
     if (event.key === "Home") nextIndex = 0;
     if (event.key === "End") nextIndex = tabItems.length - 1;
     activateAuthTab(tabItems[nextIndex], true);
+  });
+});
+
+document.querySelectorAll(".password-toggle").forEach((button) => {
+  const input = document.getElementById(button.getAttribute("aria-controls"));
+  if (!input) throw new Error("Password toggle is missing its input");
+  button.addEventListener("click", () => {
+    const showPassword = input.type === "password";
+    input.type = showPassword ? "text" : "password";
+    button.setAttribute("aria-pressed", String(showPassword));
+    button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
   });
 });
 
@@ -524,7 +612,7 @@ $("#requestForm").addEventListener("submit", async (event) => {
     $("#method").value = "dropoff";
     $("#contactPhone").value = savePhoneDefault ? phone : "";
     $("#savePhoneDefault").checked = savePhoneDefault;
-    $("#locationStatus").textContent = "Location is required before submitting.";
+    $("#locationStatus").textContent = "No location pinned yet. Click the map or use GPS to add one before submitting.";
     $("#latitude").value = "";
     $("#longitude").value = "";
     $("#requestError").textContent = "";
@@ -699,12 +787,14 @@ $("#hubForm").addEventListener("submit", async (event) => {
 window.updateRequest = async (id, action, button) => {
   const confirmation = {
     approve: { title: "Approve request?", message: "This will approve the collection request.", confirmLabel: "Approve request" },
-    reject: { title: "Reject request?", message: "This will reject the collection request.", confirmLabel: "Reject request", danger: true },
+    reject: { title: "Reject request?", message: "Provide a reason so the resident understands why this request was rejected.", confirmLabel: "Reject request", danger: true, reasonRequired: true },
   }[action];
   if (confirmation && !await confirmAction(confirmation.title, confirmation.message, confirmation)) return;
+  const requestBody = { action };
+  if (action === "reject") requestBody.reason = $("#confirmationReason").value.trim();
   await withButtonLoading(button, "Saving...", async () => {
     try {
-      await api(`/api/admin/requests/${id}`, { method: "POST", body: JSON.stringify({ action }) });
+      await api(`/api/admin/requests/${id}`, { method: "POST", body: JSON.stringify(requestBody) });
       const messages = {
         approve: "Request approved.",
         reject: "Request rejected.",
@@ -736,6 +826,23 @@ window.deleteRequest = async (id, button) => {
       loadAuditHistory().catch((error) => notify(`Request deleted, but audit history could not refresh: ${error.message}`, "error"));
     } catch (error) {
       notify(`Request could not be deleted: ${error.message}`, "error");
+    }
+  });
+};
+
+window.deleteAuditEntry = async (auditId, button) => {
+  if (!await confirmAction(
+    "Delete audit entry?",
+    "This permanently removes the selected record from admin audit history. It does not undo the action recorded.",
+    { confirmLabel: "Delete entry", danger: true },
+  )) return;
+  await withButtonLoading(button, "Deleting...", async () => {
+    try {
+      await api(`/api/admin/audit/${encodeURIComponent(auditId)}`, { method: "DELETE" });
+      notify("Audit entry deleted.");
+      loadAuditHistory().catch((error) => notify(`Audit entry deleted, but history could not refresh: ${error.message}`, "error"));
+    } catch (error) {
+      notify(`Audit entry could not be deleted: ${error.message}`, "error");
     }
   });
 };

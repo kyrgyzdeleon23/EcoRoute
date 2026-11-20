@@ -139,6 +139,61 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertEqual(audit_response.status_code, 200)
         self.assertEqual(audit_response.get_json()[0]["request_number"], request_number)
 
+    def test_admin_rejection_requires_and_saves_a_reason(self):
+        request_id = str(uuid.uuid4())
+        self.request_ids.append(request_id)
+        app_module.REQUESTS[request_id] = {
+            "id": request_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "category": "Small Peripherals & Electronics",
+            "item": "Keyboard",
+            "method": "pickup",
+            "request_number": "PU-0043",
+            "status": "Pending",
+            "created_at": "2026-11-20T10:00:00",
+        }
+        with self.client.session_transaction() as session:
+            session["role"] = "admin"
+
+        missing_reason = self.client.post(
+            f"/api/admin/requests/{request_id}",
+            json={"action": "reject"},
+        )
+        self.assertEqual(missing_reason.status_code, 400)
+
+        rejected = self.client.post(
+            f"/api/admin/requests/{request_id}",
+            json={"action": "reject", "reason": "The pickup location is outside our service area."},
+        )
+        self.assertEqual(rejected.status_code, 200)
+        self.assertEqual(
+            rejected.get_json()["request"]["rejection_reason"],
+            "The pickup location is outside our service area.",
+        )
+
+    def test_admin_can_permanently_delete_audit_history_entry(self):
+        audit_id = str(uuid.uuid4())
+        entry = {
+            "audit_id": audit_id,
+            "request_id": "deleted-request",
+            "request_number": "PU-0044",
+            "action": "deleted",
+            "admin": "Test Admin",
+            "timestamp": "2026-11-20T10:00:00",
+        }
+        app_module.AUDIT_LOG.append(entry)
+        forbidden = self.client.delete(f"/api/admin/audit/{audit_id}")
+        self.assertEqual(forbidden.status_code, 403)
+        with self.client.session_transaction() as session:
+            session.update(name="Test Admin", role="admin")
+
+        deleted = self.client.delete(f"/api/admin/audit/{audit_id}")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.get_json()["audit_id"], audit_id)
+        self.assertNotIn(entry, app_module.AUDIT_LOG)
+        self.assertEqual(self.client.get("/api/admin/audit").get_json(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
