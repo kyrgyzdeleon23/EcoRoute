@@ -117,7 +117,11 @@
       background: var(--white);
       box-shadow: 0 10px 28px #17231f26;
       pointer-events: auto;
-      animation: notification-enter .2s ease-out both;
+      animation: notification-enter .24s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    .notification.notification-leaving {
+      animation: notification-leave .18s ease-in both;
     }
 
     .notification.notification-error {
@@ -138,8 +142,12 @@
     }
 
     @keyframes notification-enter {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translate3d(18px, 8px, 0) scale(.98); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes notification-leave {
+      to { opacity: 0; transform: translate3d(18px, 4px, 0) scale(.98); }
     }
 
     .loading-gear[hidden] {
@@ -205,6 +213,11 @@
 
     button:not(:disabled):hover {
       transform: translateY(-1px);
+    }
+
+    button:not(:disabled):active {
+      transform: translateY(0) scale(.97);
+      transition-duration: .08s;
     }
 
     button:focus-visible {
@@ -393,44 +406,6 @@
       background: #e8f4dc;
     }
 
-    .password-field {
-      position: relative;
-    }
-
-    .password-field input {
-      padding-right: 58px;
-    }
-
-    .password-toggle {
-      position: absolute;
-      right: 7px;
-      top: 50%;
-      min-width: 44px;
-      min-height: 44px;
-      display: inline-grid;
-      place-items: center;
-      padding: 8px;
-      border-radius: 10px;
-      color: var(--muted);
-      background: transparent;
-      transform: translateY(-50%);
-    }
-
-    .password-toggle:hover {
-      background: var(--mint);
-      color: var(--leaf);
-      transform: translateY(-50%);
-    }
-
-    button.password-toggle:not(:disabled):hover {
-      transform: translateY(-50%);
-    }
-
-    .password-toggle svg {
-      width: 20px;
-      height: 20px;
-    }
-
     .auth .panel {
       width: 100%;
       max-width: 680px;
@@ -503,8 +478,16 @@
       left: 12px;
       height: 3px;
       border-radius: 999px;
-      background: transparent;
+      background: var(--leaf);
       content: "";
+      opacity: 0;
+      transform: scaleX(.35);
+      transition: opacity .18s ease, transform .24s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .tab.active::after {
+      opacity: 1;
+      transform: scaleX(1);
     }
 
     .tab.active::after {
@@ -573,7 +556,25 @@
       border: 1px solid var(--line);
       border-radius: var(--radius-control);
       background: var(--white);
-      transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+      transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .24s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .method-option-card::after {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--leaf);
+      content: "✓";
+      font-size: .72rem;
+      opacity: 0;
+      transform: scale(.3);
+      transition: opacity .16s ease, transform .24s cubic-bezier(.22, 1, .36, 1);
     }
 
     .method-option-card strong {
@@ -592,6 +593,12 @@
       border-color: var(--leaf);
       background: var(--mint);
       box-shadow: inset 0 0 0 1px var(--leaf);
+      transform: translateY(-2px);
+    }
+
+    .method-option input:checked + .method-option-card::after {
+      opacity: 1;
+      transform: scale(1);
     }
 
     .method-option input:focus-visible + .method-option-card {
@@ -690,6 +697,27 @@
     .confirmation-dialog::backdrop {
       background: #17231f80;
       backdrop-filter: blur(3px);
+      animation: backdrop-enter .18s ease-out both;
+    }
+
+    .confirmation-dialog[open],
+    .request-map-dialog[open] {
+      animation: dialog-enter .26s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    .request-map-dialog::backdrop,
+    .confirmation-dialog::backdrop {
+      animation: backdrop-enter .18s ease-out both;
+    }
+
+    @keyframes dialog-enter {
+      from { opacity: 0; transform: translateY(10px) scale(.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes backdrop-enter {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .request-map-dialog {
@@ -995,12 +1023,30 @@
     }
 
     .app.entering {
-      animation: dashboard-enter .38s ease both;
+      animation: dashboard-enter .38s cubic-bezier(.22, 1, .36, 1) both;
     }
 
+    .app.entering .dashboard-intro,
+    .app.entering .overview-hero,
+    .app.entering .dashboard-section-nav,
+    .app.entering [data-dashboard-section] {
+      animation: dashboard-card-enter .32s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    .app.entering .overview-hero { animation-delay: .05s; }
+    .app.entering .dashboard-section-nav { animation-delay: .1s; }
+    .app.entering [data-dashboard-section]:nth-of-type(1) { animation-delay: .15s; }
+    .app.entering [data-dashboard-section]:nth-of-type(2) { animation-delay: .21s; }
+    .app.entering [data-dashboard-section]:nth-of-type(3) { animation-delay: .27s; }
+
     @keyframes dashboard-enter {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from { opacity: 0; transform: translate3d(0, 16px, 0); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
+    }
+
+    @keyframes dashboard-card-enter {
+      from { opacity: 0; transform: translate3d(0, 12px, 0); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
     }
 
     .app-header .shell {
@@ -1174,6 +1220,29 @@
       font: 700 2rem 'Space Grotesk', sans-serif;
     }
 
+    .overview-stat strong.skeleton-value {
+      width: 2.4ch;
+      height: 2rem;
+      border-radius: 8px;
+      color: transparent;
+      background: linear-gradient(90deg, #ffffff26 25%, #ffffff55 50%, #ffffff26 75%);
+      background-size: 200% 100%;
+      animation: skeleton-sweep 1.2s ease-in-out infinite;
+    }
+
+    .count-updated {
+      animation: count-pop .28s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    @keyframes count-pop {
+      0% { opacity: .45; transform: translateY(5px) scale(.92); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes skeleton-sweep {
+      to { background-position: -200% 0; }
+    }
+
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1219,6 +1288,15 @@
       animation: request-row-highlight 1.2s ease-out;
     }
 
+    .request-table tr.request-details-row.is-open {
+      animation: request-details-enter .24s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    @keyframes request-details-enter {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     @keyframes request-row-highlight {
       from { background-color: var(--mint); }
       to { background-color: transparent; }
@@ -1251,6 +1329,19 @@
     .status.Rejected {
       background: #f7dcd8;
       color: #922f25;
+    }
+
+    .status {
+      transition: background-color .24s ease, color .24s ease, transform .24s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .status.status-updated {
+      animation: status-pop .32s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    @keyframes status-pop {
+      0% { opacity: .4; transform: scale(.94); }
+      100% { opacity: 1; transform: scale(1); }
     }
 
     .status.Approved,
@@ -1389,6 +1480,20 @@
       padding: 20px 0;
     }
 
+    .request-skeleton {
+      display: grid;
+      gap: 10px;
+      padding: 4px 0;
+    }
+
+    .request-skeleton span {
+      height: 54px;
+      border-radius: 12px;
+      background: linear-gradient(90deg, #edf2e9 25%, #f7faf4 50%, #edf2e9 75%);
+      background-size: 200% 100%;
+      animation: skeleton-sweep 1.2s ease-in-out infinite;
+    }
+
     .hub-layout {
       display: grid;
       grid-template-columns: 1.4fr 1fr;
@@ -1498,6 +1603,32 @@
 
       .notification {
         animation: none;
+      }
+
+      .app.entering,
+      .app.entering .dashboard-intro,
+      .app.entering .overview-hero,
+      .app.entering .dashboard-section-nav,
+      .app.entering [data-dashboard-section],
+      .request-skeleton span,
+      .status.status-updated {
+        animation: none;
+      }
+
+      .notification.notification-leaving,
+      .method-option-card,
+      .method-option-card::after,
+      .tab::after,
+      .status,
+      .count-updated,
+      .overview-stat strong.skeleton-value,
+      .request-table tr.request-details-row.is-open,
+      .confirmation-dialog[open],
+      .request-map-dialog[open],
+      .confirmation-dialog::backdrop,
+      .request-map-dialog::backdrop {
+        animation: none;
+        transition: none;
       }
 
     }
@@ -1963,13 +2094,7 @@
         <label for="loginEmail">Email</label>
         <input id="loginEmail" type="email" required autocomplete="email" placeholder="name@example.com">
         <label for="loginPassword">Password</label>
-        <div class="password-field">
-          <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
-          <button class="password-toggle" type="button" data-password-toggle="loginPassword" aria-label="Show password" aria-pressed="false">
-            <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
-            <svg class="eye-closed hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a13.6 13.6 0 0 1-2.1 2.7M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 2-.2 2.8-.5M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
+        <input id="loginPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
         <button class="primary" type="submit">Log in</button>
       </form>
 
@@ -1979,13 +2104,7 @@
         <label for="signupEmail">Email</label>
         <input id="signupEmail" type="email" required autocomplete="email" placeholder="name@example.com">
         <label for="signupPassword">Password</label>
-        <div class="password-field">
-          <input id="signupPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="••••••••">
-          <button class="password-toggle" type="button" data-password-toggle="signupPassword" aria-label="Show password" aria-pressed="false">
-            <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
-            <svg class="eye-closed hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a13.6 13.6 0 0 1-2.1 2.7M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 2-.2 2.8-.5M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
+        <input id="signupPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="••••••••">
         <button class="primary">Create account</button>
       </form>
 
@@ -2025,9 +2144,9 @@
           <a class="user-overview-action" href="#userRequestSection">Start a collection request</a>
         </div>
         <div class="overview-stats" role="group" aria-label="Your request summary">
-          <div class="overview-stat"><span>Open requests</span><strong id="userOpenCount">—</strong></div>
-          <div class="overview-stat"><span>Awaiting review</span><strong id="userPendingCount">—</strong></div>
-          <div class="overview-stat"><span>Completed</span><strong id="userCompletedCount">—</strong></div>
+          <div class="overview-stat"><span>Open requests</span><strong id="userOpenCount" class="skeleton-value">—</strong></div>
+          <div class="overview-stat"><span>Awaiting review</span><strong id="userPendingCount" class="skeleton-value">—</strong></div>
+          <div class="overview-stat"><span>Completed</span><strong id="userCompletedCount" class="skeleton-value">—</strong></div>
         </div>
       </section>
 
@@ -2148,9 +2267,9 @@
           <p>Monitor incoming requests and completed collections at a glance.</p>
         </div>
         <div class="overview-stats" role="group" aria-label="Collection request summary">
-          <div class="overview-stat"><span>Open requests</span><strong id="adminOpenCount">—</strong></div>
-          <div class="overview-stat"><span>Awaiting review</span><strong id="adminPendingCount">—</strong></div>
-          <div class="overview-stat"><span>Completed</span><strong id="adminCompletedCount">—</strong></div>
+          <div class="overview-stat"><span>Open requests</span><strong id="adminOpenCount" class="skeleton-value">—</strong></div>
+          <div class="overview-stat"><span>Awaiting review</span><strong id="adminPendingCount" class="skeleton-value">—</strong></div>
+          <div class="overview-stat"><span>Completed</span><strong id="adminCompletedCount" class="skeleton-value">—</strong></div>
         </div>
       </section>
 

@@ -35,6 +35,12 @@ function notify(message, type = "success") {
   notification.className = `notification${type === "error" ? " notification-error" : ""}`;
   notification.setAttribute("role", type === "error" ? "alert" : "status");
 
+  const dismissNotification = () => {
+    if (notification.classList.contains("notification-leaving")) return;
+    notification.classList.add("notification-leaving");
+    window.setTimeout(() => notification.remove(), 180);
+  };
+
   const text = document.createElement("span");
   text.className = "notification-message";
   text.textContent = message;
@@ -44,12 +50,12 @@ function notify(message, type = "success") {
   dismiss.type = "button";
   dismiss.setAttribute("aria-label", "Dismiss notification");
   dismiss.textContent = "×";
-  dismiss.addEventListener("click", () => notification.remove());
+  dismiss.addEventListener("click", dismissNotification);
 
   notification.append(text, dismiss);
   stack.append(notification);
   while (stack.children.length > 4) stack.firstElementChild.remove();
-  window.setTimeout(() => notification.remove(), 10000);
+  window.setTimeout(dismissNotification, 10000);
 }
 
 async function withButtonLoading(button, loadingText, action) {
@@ -236,7 +242,7 @@ function requestTable(items, admin = false, emptyMessage = "No requests yet.", h
     const reference = requestReference(item);
     const mobileMethod = item.method === "dropoff" ? "drop-off" : "pickup";
     const statusDetails = `${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}`;
-    return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method"> · ${mobileMethod}</span></td><td data-label="Method">${escapeHtml(item.method)}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
+    return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method"> · ${mobileMethod}</span></td><td data-label="Method">${escapeHtml(item.method)}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status status-updated ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -244,9 +250,18 @@ function updateOverview(prefix, requests) {
   const openCount = requests.filter((item) => !["Completed", "Rejected"].includes(item.status)).length;
   const pendingCount = requests.filter((item) => item.status === "Pending").length;
   const completedCount = requests.filter((item) => item.status === "Completed").length;
-  $(`#${prefix}OpenCount`).textContent = openCount;
-  $(`#${prefix}PendingCount`).textContent = pendingCount;
-  $(`#${prefix}CompletedCount`).textContent = completedCount;
+  [
+    [`${prefix}OpenCount`, openCount],
+    [`${prefix}PendingCount`, pendingCount],
+    [`${prefix}CompletedCount`, completedCount],
+  ].forEach(([id, value]) => {
+    const element = $(`#${id}`);
+    element.textContent = value;
+    element.classList.remove("skeleton-value");
+    element.classList.remove("count-updated");
+    void element.offsetWidth;
+    element.classList.add("count-updated");
+  });
 }
 
 if ("IntersectionObserver" in window) {
@@ -269,6 +284,10 @@ if ("IntersectionObserver" in window) {
 }
 
 async function loadUser() {
+  if (!$("#userRequests").children.length && !$("#userHistory").children.length) {
+    $("#userRequests").innerHTML = '<div class="request-skeleton" aria-label="Loading active requests"><span></span><span></span><span></span></div>';
+    $("#userHistory").innerHTML = '<div class="request-skeleton" aria-label="Loading request history"><span></span><span></span></div>';
+  }
   const requests = await api("/api/my-requests");
   const snapshot = JSON.stringify(requests);
   if (snapshot === lastUserRequestsSnapshot) return;
@@ -280,6 +299,9 @@ async function loadUser() {
 
 async function loadAdmin() {
   const loadToken = ++adminLoadToken;
+  if (!$("#adminRequests").children.length) {
+    $("#adminRequests").innerHTML = '<div class="request-skeleton" aria-label="Loading active requests"><span></span><span></span><span></span></div>';
+  }
   const search = $("#adminSearch").value;
   const params = new URLSearchParams({
     search,
@@ -415,18 +437,6 @@ document.querySelectorAll(".tab").forEach((tab, index, tabs) => {
     if (event.key === "Home") nextIndex = 0;
     if (event.key === "End") nextIndex = tabItems.length - 1;
     activateAuthTab(tabItems[nextIndex], true);
-  });
-});
-
-document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {
-  toggle.addEventListener("click", () => {
-    const input = document.getElementById(toggle.dataset.passwordToggle);
-    const showing = input.type === "text";
-    input.type = showing ? "password" : "text";
-    toggle.querySelector(".eye-open")?.classList.toggle("hidden", showing);
-    toggle.querySelector(".eye-closed")?.classList.toggle("hidden", !showing);
-    toggle.setAttribute("aria-label", showing ? "Show password" : "Hide password");
-    toggle.setAttribute("aria-pressed", String(!showing));
   });
 });
 
