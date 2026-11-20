@@ -205,6 +205,7 @@ test("request submission validates contact numbers and stores valid requests", a
   assert.equal(store.requests.length, 1);
   assert.equal(store.requests[0].owner_id, "user-id");
   assert.equal(store.requests[0].data.status, "Pending");
+  assert.equal(store.requests[0].data.request_number, "PU-0001");
   assert.equal(valid.headers.get("set-cookie").includes("Secure"), true);
 });
 
@@ -271,6 +272,69 @@ test("admins can permanently delete audit-history entries", async () => {
   assert.deepEqual(await deleted.json(), { status: "success", audit_id: "1" });
   const remaining = await handler(makeRequest("/api/admin/audit", { cookie }));
   assert.deepEqual(await remaining.json(), []);
+});
+
+test("audit history resolves request numbers for stored and legacy requests", async () => {
+  const { fetchImpl } = createSupabaseMock({
+    requests: [{
+      id: "request-13",
+      owner_id: "user-id",
+      data: {
+        id: "request-13",
+        method: "pickup",
+        request_number: "PU-0013",
+      },
+    }, {
+      id: "legacy",
+      owner_id: "user-id",
+      data: { id: "legacy", method: "dropoff" },
+    }],
+    audits: [{
+      request_id: "request-13",
+      action: "rejected",
+      admin: "Test Admin",
+      timestamp: "2026-11-20T10:00:00",
+    }, {
+      request_id: "legacy",
+      action: "approved",
+      admin: "Test Admin",
+      timestamp: "2026-11-20T10:01:00",
+    }],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const cookie = await login(handler, "admin@example.com");
+  const result = await handler(makeRequest("/api/admin/audit", { cookie }));
+
+  assert.equal(result.status, 200);
+  const entries = await result.json();
+  assert.equal(entries[0].request_number, "PU-0013");
+  assert.equal(entries[1].request_number, "ER-LEGACY");
+});
+
+test("request deletion preserves its request number in audit history", async () => {
+  const { fetchImpl } = createSupabaseMock({
+    requests: [{
+      id: "request-42",
+      owner_id: "user-id",
+      data: {
+        id: "request-42",
+        method: "pickup",
+        request_number: "PU-0042",
+        status: "Completed",
+      },
+    }],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const cookie = await login(handler, "admin@example.com");
+
+  const deleted = await handler(makeRequest("/api/admin/requests/request-42", {
+    method: "DELETE",
+    cookie,
+  }));
+  assert.equal(deleted.status, 200);
+
+  const audit = await handler(makeRequest("/api/admin/audit", { cookie }));
+  assert.equal((await audit.json())[0].request_number, "PU-0042");
 });
 
 test("admin request filters apply together and reject invalid date ranges", async () => {

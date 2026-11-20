@@ -506,9 +506,14 @@ function publicRequest(item) {
   return visible;
 }
 
-async function addAudit(fetchImpl, env, session, requestId, action) {
+function requestReference(item) {
+  return item.request_number || `ER-${String(item.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`;
+}
+
+async function addAudit(fetchImpl, env, session, requestId, action, requestNumber) {
   const entry = {
     request_id: requestId,
+    request_number: requestNumber,
     action,
     admin: session.name,
     admin_username: session.user_id,
@@ -803,6 +808,9 @@ async function handleApi(request, fetchImpl, env) {
       });
       session.phone = phone;
     }
+    const methodCount = (await allRequests(fetchImpl, env))
+      .filter((item) => item.method === data.method).length;
+    const requestPrefix = data.method === "pickup" ? "PU" : "DO";
     const item = {
       id: randomUUID(),
       user: session.user_id,
@@ -810,6 +818,7 @@ async function handleApi(request, fetchImpl, env) {
       category: data.category,
       item: data.item,
       method: data.method,
+      request_number: `${requestPrefix}-${String(methodCount + 1).padStart(4, "0")}`,
       phone,
       latitude,
       longitude,
@@ -881,7 +890,7 @@ async function handleApi(request, fetchImpl, env) {
     if (method === "DELETE") {
       const item = await removeRequest(fetchImpl, env, itemId);
       if (!item) throw new ApiError(404, "Request not found");
-      await addAudit(fetchImpl, env, session, itemId, "deleted");
+      await addAudit(fetchImpl, env, session, itemId, "deleted", requestReference(item));
       return response({ status: "success", id: itemId });
     }
 
@@ -907,7 +916,7 @@ async function handleApi(request, fetchImpl, env) {
       item.status = "Completed";
       item.completed_at = localIsoSeconds();
       await saveRequest(fetchImpl, env, item);
-      await addAudit(fetchImpl, env, session, itemId, "completed");
+      await addAudit(fetchImpl, env, session, itemId, "completed", requestReference(item));
       return response({ status: "success", request: publicRequest(item) });
     }
 
@@ -927,7 +936,14 @@ async function handleApi(request, fetchImpl, env) {
       }
     }
     await saveRequest(fetchImpl, env, item);
-    await addAudit(fetchImpl, env, session, itemId, data.action === "approve" ? "approved" : "rejected");
+    await addAudit(
+      fetchImpl,
+      env,
+      session,
+      itemId,
+      data.action === "approve" ? "approved" : "rejected",
+      requestReference(item),
+    );
     return response({ status: "success", request: publicRequest(item) });
   }
 
@@ -994,10 +1010,20 @@ async function handleApi(request, fetchImpl, env) {
 
   if (path === "/api/admin/audit" && method === "GET") {
     requireUser(session, "admin");
-    const rows = await supabaseRequest(fetchImpl, env, "audit_log", {
-      query: { select: "id,data", order: "created_at.desc" },
-    });
-    return response((rows || []).map((row) => ({ ...row.data, audit_id: String(row.id) })));
+    const [rows, requests] = await Promise.all([
+      supabaseRequest(fetchImpl, env, "audit_log", {
+        query: { select: "id,data", order: "created_at.desc" },
+      }),
+      allRequests(fetchImpl, env),
+    ]);
+    const requestNumbers = new Map(requests.map((item) => [item.id, requestReference(item)]));
+    return response((rows || []).map((row) => ({
+      ...row.data,
+      request_number: row.data.request_number
+        || requestNumbers.get(row.data.request_id)
+        || requestReference({ id: row.data.request_id }),
+      audit_id: String(row.id),
+    })));
   }
 
   const categoryMatch = path.match(/^\/api\/inventory\/(.+)$/);
