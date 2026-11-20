@@ -79,6 +79,18 @@ def utc_iso_seconds():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def format_philippine_mobile(phone):
+    phone = phone.strip()
+    digits = re.sub(r"\D", "", phone)
+    if re.fullmatch(r"09\d{9}", digits):
+        subscriber = digits[1:]
+    elif re.fullmatch(r"639\d{9}", digits):
+        subscriber = digits[2:]
+    else:
+        return phone
+    return f"+63 {subscriber[:3]} {subscriber[3:6]} {subscriber[6:]}"
+
+
 def current_user():
     user_id = session.get("user_id")
     if not user_id:
@@ -88,11 +100,12 @@ def current_user():
     if elapsed is None or elapsed < 0 or elapsed >= SESSION_IDLE_TIMEOUT_SECONDS:
         session.clear()
         return None
+    phone = session.get("phone") or PROFILE_PHONES.get(user_id, "")
     return {
         "id": user_id,
         "name": session["name"],
         "role": session["role"],
-        "phone": session.get("phone") or PROFILE_PHONES.get(user_id, ""),
+        "phone": format_philippine_mobile(phone) if isinstance(phone, str) else "",
     }
 
 
@@ -241,6 +254,8 @@ def request_route(request_item):
 def public_request(item):
     visible = dict(item)
     visible.pop("user", None)
+    if isinstance(visible.get("phone"), str):
+        visible["phone"] = format_philippine_mobile(visible["phone"])
     return visible
 
 
@@ -474,6 +489,7 @@ def add_ewaste():
     phone_digits = re.sub(r"[^0-9]", "", phone)
     if not re.fullmatch(r"\+?[0-9\s().-]{7,20}", phone) or not 7 <= len(phone_digits) <= 15:
         return jsonify({"error": "Enter a valid phone number with 7 to 15 digits"}), 400
+    phone = format_philippine_mobile(phone)
     try:
         latitude = float(data["latitude"])
         longitude = float(data["longitude"])

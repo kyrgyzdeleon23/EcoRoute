@@ -60,7 +60,13 @@ function createSupabaseMock({ requests = [], audits = [] } = {}) {
     }
     if (table === "hub_edges") return Response.json(store.edges);
     if (table === "profiles") {
-      if (init.method === "PATCH") return new Response(null, { status: 204 });
+      if (init.method === "PATCH") {
+        const id = url.searchParams.get("id")?.slice(3);
+        const profile = store.profiles.find((entry) => entry.id === id);
+        if (profile) Object.assign(profile, JSON.parse(init.body));
+        else store.profiles.push({ id, ...JSON.parse(init.body) });
+        return new Response(null, { status: 204 });
+      }
       const id = url.searchParams.get("id")?.slice(3);
       return Response.json([{
         id,
@@ -230,7 +236,7 @@ test("request submission validates contact numbers and stores valid requests", a
       category: "Batteries & Energy Storage",
       item: "Lithium-ion laptop/phone batteries",
       method: "pickup",
-      phone: "+63 912-345-6789",
+      phone: "09168452969",
       save_phone_default: true,
       latitude: 14.25,
       longitude: 121.15,
@@ -244,7 +250,26 @@ test("request submission validates contact numbers and stores valid requests", a
   assert.equal(store.requests[0].data.status, "Pending");
   assert.equal(store.requests[0].data.request_number, "PU-0001");
   assert.equal(store.requests[0].data.created_at.endsWith("Z"), true);
+  assert.equal(store.requests[0].data.phone, "+63 916 845 2969");
+  assert.equal(store.profiles.find((profile) => profile.id === "user-id").phone, "+63 916 845 2969");
   assert.equal(valid.headers.get("set-cookie").includes("Secure"), true);
+});
+
+test("legacy request contact numbers are formatted when returned", async () => {
+  const { fetchImpl } = createSupabaseMock({
+    requests: [{
+      id: "legacy-request",
+      owner_id: "user-id",
+      data: { id: "legacy-request", phone: "09168452969", status: "Pending", method: "pickup" },
+    }],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const cookie = await login(handler);
+  const result = await handler(makeRequest("/api/my-requests", { cookie }));
+
+  assert.equal(result.status, 200);
+  const [request] = await result.json();
+  assert.equal(request.phone, "+63 916 845 2969");
 });
 
 test("admin rejection requires and stores a reason", async () => {

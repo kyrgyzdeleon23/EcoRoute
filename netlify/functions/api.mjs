@@ -254,7 +254,7 @@ function currentUser(session) {
     id: session.user_id,
     name: session.name,
     role: session.role,
-    phone: session.phone || "",
+    phone: formatPhilippineMobile(session.phone || ""),
   };
 }
 
@@ -507,9 +507,21 @@ async function removeRequest(fetchImpl, env, itemId) {
   return existing;
 }
 
+function formatPhilippineMobile(phone) {
+  const digits = phone.replace(/[^0-9]/g, "");
+  let subscriber;
+  if (/^09\d{9}$/.test(digits)) subscriber = digits.slice(1);
+  else if (/^639\d{9}$/.test(digits)) subscriber = digits.slice(2);
+  else return phone.trim();
+  return `+63 ${subscriber.slice(0, 3)} ${subscriber.slice(3, 6)} ${subscriber.slice(6)}`;
+}
+
 function publicRequest(item) {
   const visible = { ...item };
   delete visible.user;
+  if (typeof visible.phone === "string") {
+    visible.phone = formatPhilippineMobile(visible.phone);
+  }
   return visible;
 }
 
@@ -794,11 +806,12 @@ async function handleApi(request, fetchImpl, env) {
     if (typeof data.phone !== "string") {
       throw new ApiError(400, "A contact phone number is required");
     }
-    const phone = data.phone.trim();
+    let phone = data.phone.trim();
     const digits = phone.replace(/[^0-9]/g, "");
     if (!/^\+?[0-9\s().-]{7,20}$/.test(phone) || digits.length < 7 || digits.length > 15) {
       throw new ApiError(400, "Enter a valid phone number with 7 to 15 digits");
     }
+    phone = formatPhilippineMobile(phone);
     const latitude = finiteNumber(data.latitude);
     const longitude = finiteNumber(data.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {

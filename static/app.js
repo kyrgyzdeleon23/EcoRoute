@@ -395,9 +395,19 @@ function requestMapAction(item) {
   return `<td class="view-map-cell" data-label="Location">${requestMapContent(item)}</td>`;
 }
 
+function formatContactPhone(value) {
+  const phone = String(value || "").trim();
+  const digits = phone.replace(/[^0-9]/g, "");
+  let subscriber;
+  if (/^09\d{9}$/.test(digits)) subscriber = digits.slice(1);
+  else if (/^639\d{9}$/.test(digits)) subscriber = digits.slice(2);
+  else return phone;
+  return `+63 ${subscriber.slice(0, 3)} ${subscriber.slice(3, 6)} ${subscriber.slice(6)}`;
+}
+
 function residentCell(item, admin) {
   if (!admin) return `<td data-label="Resident">${escapeHtml(item.name)}</td>`;
-  return `<td data-label="Resident"><button class="resident-contact-button" type="button" data-resident-contact data-resident-name="${escapeHtml(item.name)}" data-phone="${escapeHtml(item.phone || "")}" aria-label="View contact information for ${escapeHtml(item.name)}">${escapeHtml(item.name)}</button></td>`;
+  return `<td data-label="Resident"><button class="resident-contact-button" type="button" data-resident-contact data-resident-name="${escapeHtml(item.name)}" data-phone="${escapeHtml(formatContactPhone(item.phone || ""))}" aria-label="View contact information for ${escapeHtml(item.name)}">${escapeHtml(item.name)}</button></td>`;
 }
 
 function requestReference(item) {
@@ -676,6 +686,15 @@ document.querySelectorAll(".logout").forEach((button) => button.addEventListener
   }
 }));
 
+const contactPhoneInput = $("#contactPhone");
+contactPhoneInput.addEventListener("input", () => {
+  const formattedPhone = formatContactPhone(contactPhoneInput.value);
+  if (formattedPhone.startsWith("+63 ")) contactPhoneInput.value = formattedPhone;
+});
+contactPhoneInput.addEventListener("blur", () => {
+  contactPhoneInput.value = formatContactPhone(contactPhoneInput.value);
+});
+
 $("#category").addEventListener("change", renderItems);
 let gpsPinNotified = false;
 $("#locate").addEventListener("click", () => {
@@ -733,7 +752,8 @@ $("#requestForm").addEventListener("submit", async (event) => {
   submitButton.textContent = "Saving request...";
   event.target.setAttribute("aria-busy", "true");
   $("#requestConfirmation").textContent = "";
-  const phone = $("#contactPhone").value.trim();
+  const phone = formatContactPhone($("#contactPhone").value);
+  $("#contactPhone").value = phone;
   const savePhoneDefault = $("#savePhoneDefault").checked;
   try {
     await api("/api/e-waste", { method: "POST", body: JSON.stringify({ category: $("#category").value, item: $("#item").value, method: $("#method").value, phone, save_phone_default: savePhoneDefault, latitude: $("#latitude").value, longitude: $("#longitude").value }) });
@@ -1000,7 +1020,7 @@ window.removeHub = async (name, button) => {
   try {
     config = await api("/api/config");
     if (config.user && config.user.role === "user") {
-      $("#contactPhone").value = config.user.phone || "";
+      $("#contactPhone").value = formatContactPhone(config.user.phone || "");
     }
     if (config.user) showApp(config.user, false);
     else $("#authView").style.display = "grid";

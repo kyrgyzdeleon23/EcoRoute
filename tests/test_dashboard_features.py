@@ -113,7 +113,7 @@ class DashboardFeatureTests(unittest.TestCase):
                 "category": "Batteries & Energy Storage",
                 "item": "Lithium-ion laptop/phone batteries",
                 "method": "pickup",
-                "phone": "+63 912-345-6789",
+                "phone": "09168452969",
                 "save_phone_default": True,
                 "latitude": 14.25,
                 "longitude": 121.15,
@@ -123,9 +123,26 @@ class DashboardFeatureTests(unittest.TestCase):
         request_id = response.get_json()["id"]
         self.request_ids.append(request_id)
         self.assertTrue(app_module.REQUESTS[request_id]["created_at"].endswith("+00:00"))
-        self.assertEqual(app_module.PROFILE_PHONES[self.user_id], "+63 912-345-6789")
+        self.assertEqual(app_module.REQUESTS[request_id]["phone"], "+63 916 845 2969")
+        self.assertEqual(app_module.PROFILE_PHONES[self.user_id], "+63 916 845 2969")
         config = self.client.get("/api/config").get_json()
-        self.assertEqual(config["user"]["phone"], "+63 912-345-6789")
+        self.assertEqual(config["user"]["phone"], "+63 916 845 2969")
+
+    def test_existing_phone_numbers_are_formatted_in_responses(self):
+        request_id = str(uuid.uuid4())
+        self.request_ids.append(request_id)
+        app_module.REQUESTS[request_id] = {
+            "id": request_id,
+            "user": self.user_id,
+            "phone": "09168452969",
+        }
+        with self.client.session_transaction() as session:
+            session["phone"] = "09168452969"
+
+        requests = self.client.get("/api/my-requests").get_json()
+        self.assertEqual(requests[0]["phone"], "+63 916 845 2969")
+        config = self.client.get("/api/config").get_json()
+        self.assertEqual(config["user"]["phone"], "+63 916 845 2969")
 
     def test_request_rejects_invalid_contact_number(self):
         response = self.client.post(
