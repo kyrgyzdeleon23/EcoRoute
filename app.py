@@ -188,10 +188,11 @@ def protected(role=None):
     return decorator
 
 
-def add_audit(request_id, action):
+def add_audit(request_id, action, request_number):
     user = current_user()
     entry = {
         "request_id": request_id,
+        "request_number": request_number,
         "action": action,
         "admin": user["name"],
         "admin_username": user["id"],
@@ -201,6 +202,12 @@ def add_audit(request_id, action):
         database().table("audit_log").insert({"data": entry}).execute()
     else:
         AUDIT_LOG.append(entry)
+
+
+def request_reference(request_item):
+    return request_item.get("request_number") or (
+        f"ER-{re.sub(r'[^a-zA-Z0-9]', '', str(request_item['id']))[:6].upper()}"
+    )
 
 
 def request_route(request_item):
@@ -536,7 +543,7 @@ def update_request(item_id):
         request_item["status"] = "Completed"
         request_item["completed_at"] = datetime.now().isoformat(timespec="seconds")
         save_request(request_item)
-        add_audit(item_id, "completed")
+        add_audit(item_id, "completed", request_reference(request_item))
         pq.remove_request(request_item["id"])
         avl.root = avl.insert(avl.root, request_item["category"], {
             "id": request_item["id"],
@@ -564,7 +571,7 @@ def update_request(item_id):
                 if item["id"] != item_id and item["method"] == "pickup" and item["status"] == "Approved"
             ) + 1
     save_request(request_item)
-    add_audit(item_id, "approved" if action == "approve" else "rejected")
+    add_audit(item_id, "approved" if action == "approve" else "rejected", request_reference(request_item))
     return jsonify({"status": "success", "request": public_request(request_item)})
 
 
@@ -574,7 +581,7 @@ def delete_request(item_id):
     request_item = remove_request(item_id)
     if not request_item:
         return jsonify({"error": "Request not found"}), 404
-    add_audit(item_id, "deleted")
+    add_audit(item_id, "deleted", request_reference(request_item))
     pq.remove_request(item_id)
     avl.root = avl.delete(avl.root, request_item["category"], item_id)
     return jsonify({"status": "success", "id": item_id})
@@ -609,8 +616,20 @@ def inventory_summary():
 def audit_history():
     if is_configured():
         rows = database().table("audit_log").select("data").order("created_at", desc=True).execute().data
-        return jsonify([row["data"] for row in rows])
-    return jsonify(list(reversed(AUDIT_LOG)))
+        entries = [row["data"] for row in rows]
+    else:
+        entries = list(reversed(AUDIT_LOG))
+    request_numbers = {
+        item["id"]: request_reference(item)
+        for item in all_requests()
+    }
+    return jsonify([
+        {
+            **entry,
+            "request_number": entry.get("request_number") or request_numbers.get(entry["request_id"]),
+        }
+        for entry in entries
+    ])
 
 
 @app.route("/api/inventory/<path:category>")

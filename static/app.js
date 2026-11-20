@@ -331,7 +331,7 @@ async function loadInventorySummary() {
 
 async function loadAuditHistory() {
   const entries = await api("/api/admin/audit");
-  $("#auditHistory").innerHTML = entries.length ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th></tr></thead><tbody>${entries.map((entry) => `<tr><td data-label="Request">#${entry.request_id}</td><td data-label="Action">${escapeHtml(entry.action)}</td><td data-label="Admin">${escapeHtml(entry.admin)}</td><td data-label="Timestamp">${escapeHtml(entry.timestamp.replace("T", " "))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No admin actions yet.</p>';
+  $("#auditHistory").innerHTML = entries.length ? `<table><thead><tr><th>Request</th><th>Action</th><th>Admin</th><th>Timestamp</th></tr></thead><tbody>${entries.map((entry) => `<tr><td data-label="Request">${escapeHtml(entry.request_number || "Request number unavailable")}</td><td data-label="Action">${escapeHtml(entry.action)}</td><td data-label="Admin">${escapeHtml(entry.admin)}</td><td data-label="Timestamp">${escapeHtml(entry.timestamp.replace("T", " "))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No admin actions yet.</p>';
 }
 
 setInterval(() => {

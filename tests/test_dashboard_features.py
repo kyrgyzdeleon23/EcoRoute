@@ -11,6 +11,7 @@ class DashboardFeatureTests(unittest.TestCase):
         app_module.is_configured = lambda: False
         self.client = app_module.app.test_client()
         self.user_id = f"dashboard-test-{uuid.uuid4()}"
+        self.audit_log_size = len(app_module.AUDIT_LOG)
         with self.client.session_transaction() as session:
             session.update(user_id=self.user_id, name="Test Resident", role="user")
         self.request_ids = []
@@ -19,6 +20,7 @@ class DashboardFeatureTests(unittest.TestCase):
         for request_id in self.request_ids:
             app_module.REQUESTS.pop(request_id, None)
             app_module.pq.remove_request(request_id)
+        del app_module.AUDIT_LOG[self.audit_log_size:]
         app_module.PROFILE_PHONES.pop(self.user_id, None)
         app_module.is_configured = self.original_is_configured
 
@@ -113,6 +115,29 @@ class DashboardFeatureTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_audit_history_uses_request_number_after_request_deletion(self):
+        request_id = str(uuid.uuid4())
+        request_number = "PU-0042"
+        self.request_ids.append(request_id)
+        app_module.REQUESTS[request_id] = {
+            "id": request_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "category": "Small Peripherals & Electronics",
+            "item": "Keyboard",
+            "method": "pickup",
+            "request_number": request_number,
+            "status": "Pending",
+        }
+        with self.client.session_transaction() as session:
+            session["role"] = "admin"
+
+        response = self.client.delete(f"/api/admin/requests/{request_id}")
+        self.assertEqual(response.status_code, 200)
+        audit_response = self.client.get("/api/admin/audit")
+
+        self.assertEqual(audit_response.status_code, 200)
+        self.assertEqual(audit_response.get_json()[0]["request_number"], request_number)
 
 
 if __name__ == "__main__":
