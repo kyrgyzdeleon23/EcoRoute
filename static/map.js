@@ -41,6 +41,15 @@ const EcoRouteMap = (() => {
     }).addTo(map);
   }
 
+  function addHubLabel(marker, name) {
+    return marker.bindTooltip(popupText(name), {
+      permanent: true,
+      direction: "top",
+      offset: [0, -20],
+      className: "hub-location-tooltip",
+    });
+  }
+
   function moveTo(map, point, zoom, duration) {
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       map.setView(point, zoom);
@@ -60,6 +69,7 @@ const EcoRouteMap = (() => {
       const marker = L.marker([hub.latitude, hub.longitude], { icon: hubIcon, title: hub.name })
         .addTo(userMap)
         .bindPopup(`Drop-off: ${popupText(hub.name)}`);
+      addHubLabel(marker, hub.name);
       marker.on("click", () => setUserPin(hub.latitude, hub.longitude, onPin));
       return marker;
     });
@@ -105,7 +115,13 @@ const EcoRouteMap = (() => {
     if (adminPin) adminPin.remove();
     adminPin = null;
     adminHubMarkers.forEach((marker) => marker.remove());
-    adminHubMarkers = hubs.map((hub) => L.marker([hub.latitude, hub.longitude], { icon: hubIcon, title: hub.name }).addTo(hubMap).bindPopup(popupText(hub.name)));
+    adminHubMarkers = hubs.map((hub) => {
+      const marker = L.marker([hub.latitude, hub.longitude], { icon: hubIcon, title: hub.name })
+        .addTo(hubMap)
+        .bindPopup(popupText(hub.name));
+      addHubLabel(marker, hub.name);
+      return marker;
+    });
   }
 
   function showRequestLocation(latitude, longitude, label, hubs) {
@@ -115,10 +131,14 @@ const EcoRouteMap = (() => {
     }
 
     requestHubMarkers.forEach((marker) => marker.remove());
-    requestHubMarkers = hubs.map((hub) => L.marker([hub.latitude, hub.longitude], {
+    requestHubMarkers = hubs.map((hub) => {
+      const marker = L.marker([hub.latitude, hub.longitude], {
       icon: hubIcon,
       title: hub.name,
-    }).addTo(requestMap).bindPopup(`Drop-off: ${popupText(hub.name)}`));
+      }).addTo(requestMap).bindPopup(`Drop-off: ${popupText(hub.name)}`);
+      addHubLabel(marker, hub.name);
+      return marker;
+    });
 
     const point = [latitude, longitude];
     if (!requestLocationMarker) {

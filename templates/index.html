@@ -23,6 +23,8 @@
       --radius-card: 24px;
       --radius-control: 14px;
       --section-gap: 24px;
+      --shadow-card: 0 10px 28px #173a2512;
+      --shadow-control: 0 8px 18px #388e3c24;
     }
 
     * {
@@ -465,9 +467,9 @@
     .panel {
       background: var(--white);
       border: 1px solid var(--line);
-      padding: 30px;
+      padding: 24px;
       border-radius: var(--radius-card);
-      box-shadow: 0 12px 30px #173a2510;
+      box-shadow: var(--shadow-card);
     }
 
     .tabs {
@@ -516,6 +518,87 @@
       margin: 15px 0 6px;
     }
 
+    .form-section {
+      margin: 0 0 20px;
+      padding: 0 0 20px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .form-section:last-of-type {
+      margin-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .form-section legend {
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .form-section label {
+      margin-top: 12px;
+    }
+
+    .method-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .method-option {
+      position: relative;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .method-option input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .method-option-card {
+      min-height: 82px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-control);
+      background: var(--white);
+      transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+    }
+
+    .method-option-card strong {
+      color: var(--ink);
+      font-size: .88rem;
+    }
+
+    .method-option-card span {
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .method-option input:checked + .method-option-card {
+      border-color: var(--leaf);
+      background: var(--mint);
+      box-shadow: inset 0 0 0 1px var(--leaf);
+    }
+
+    .method-option input:focus-visible + .method-option-card {
+      outline: 3px solid #78a98f;
+      outline-offset: 3px;
+    }
+
     .save-phone-option {
       display: flex;
       align-items: flex-start;
@@ -541,6 +624,12 @@
       padding: 12px;
       background: #fff;
       color: var(--ink);
+      transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+    }
+
+    input:hover,
+    select:hover {
+      border-color: #b7c7ba;
     }
 
     input:focus-visible,
@@ -570,6 +659,7 @@
       border-radius: var(--radius-control);
       padding: 13px 18px;
       font-weight: 700;
+      box-shadow: var(--shadow-control);
     }
 
     .primary:hover {
@@ -948,7 +1038,9 @@
       overflow-x: auto;
       padding: 6px;
       border-radius: 16px;
-      background: var(--leaf-tertiary);
+      border: 1px solid var(--line);
+      background: #eaf2e4;
+      box-shadow: 0 8px 20px #173a2512;
       scrollbar-width: thin;
     }
 
@@ -970,6 +1062,8 @@
     .section-link:hover,
     .section-link[aria-current="location"] {
       background: var(--white);
+      color: var(--leaf-secondary);
+      box-shadow: 0 3px 10px #173a2512;
     }
 
     [data-dashboard-section] {
@@ -1030,6 +1124,26 @@
       text-transform: uppercase;
     }
 
+    .user-overview-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      margin-top: 18px;
+      padding: 12px 18px;
+      border-radius: var(--radius-control);
+      color: var(--leaf);
+      background: var(--white);
+      font-weight: 700;
+      text-decoration: none;
+      transition: background-color .18s ease, transform .18s ease;
+    }
+
+    .user-overview-action:hover {
+      background: #f0f7e9;
+      transform: translateY(-1px);
+    }
+
     .overview-stats {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1074,7 +1188,13 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-title h3 {
+      font-size: 1.12rem;
     }
 
     .hint {
@@ -1116,6 +1236,16 @@
     .status.Pending {
       background: #f6e8c9;
       color: #79520a;
+    }
+
+    .status.Approved {
+      background: #dcefd8;
+      color: #245e27;
+    }
+
+    .status.Completed {
+      background: #cfe8ca;
+      color: #1f5422;
     }
 
     .status.Rejected {
@@ -1171,7 +1301,8 @@
     .action {
       padding: 7px 10px;
       min-height: 44px;
-      border-radius: 999px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-control);
       margin: 4px;
       font-size: .75rem;
       font-weight: 700;
@@ -1227,6 +1358,7 @@
 
     .reject {
       background: #f7dcd8;
+      border-color: #ecc5be;
       color: var(--red);
     }
 
@@ -1241,12 +1373,15 @@
     .quiet {
       padding: 9px 13px;
       min-height: 44px;
-      border-radius: 999px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-control);
+      background: var(--white);
     }
 
     .quiet:hover {
       background: var(--mint);
       color: var(--leaf-secondary);
+      border-color: #bdd0b8;
     }
 
     .empty {
@@ -1276,6 +1411,18 @@
       border-radius: 50%;
       background: var(--white);
       filter: drop-shadow(0 2px 3px #17231f66);
+    }
+
+    .hub-location-tooltip {
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: var(--white);
+      box-shadow: 0 4px 12px #17231f26;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
     }
 
     .user-location-marker {
@@ -1424,6 +1571,24 @@
         grid-template-columns: 1fr;
       }
 
+      .user-overview-hero .overview-stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .user-overview-hero .overview-stat {
+        min-height: 84px;
+        gap: 8px;
+        padding: 10px;
+      }
+
+      .user-overview-hero .overview-stat span {
+        font-size: .72rem;
+      }
+
+      .user-overview-hero .overview-stat strong {
+        font-size: 1.45rem;
+      }
+
       .card-title {
         flex-wrap: wrap;
         gap: 8px 12px;
@@ -1453,6 +1618,10 @@
 
       .overview-stat strong {
         font-size: 1.65rem;
+      }
+
+      .user-overview-hero .overview-stat strong {
+        font-size: 1.4rem;
       }
 
       .panel {
@@ -1712,6 +1881,14 @@
     }
 
     @media (max-width: 600px) {
+      .method-options {
+        grid-template-columns: 1fr;
+      }
+
+      .method-option-card {
+        min-height: 72px;
+      }
+
       .shell {
         padding-right: 16px;
         padding-left: 16px;
@@ -1840,11 +2017,12 @@
         </div>
       </div>
 
-      <section class="overview-hero" aria-labelledby="userOverviewTitle">
+      <section class="overview-hero user-overview-hero" aria-labelledby="userOverviewTitle">
         <div>
           <p class="overview-kicker">Dashboard overview</p>
           <h3 id="userOverviewTitle">Your collection journey</h3>
           <p>Keep track of your requests and their progress in one place.</p>
+          <a class="user-overview-action" href="#userRequestSection">Start a collection request</a>
         </div>
         <div class="overview-stats" role="group" aria-label="Your request summary">
           <div class="overview-stat"><span>Open requests</span><strong id="userOpenCount">—</strong></div>
@@ -1866,25 +2044,44 @@
             <h3>New collection request</h3>
           </div>
           <form id="requestForm">
-            <label>What are you sending?</label>
-            <select id="category" required></select>
-            <select id="item" required></select>
+            <fieldset class="form-section">
+              <legend>Item details</legend>
+              <label for="category">Item category</label>
+              <select id="category" required></select>
+              <label for="item">Specific item</label>
+              <select id="item" required></select>
+            </fieldset>
 
-            <label>Collection method</label>
-            <select id="method">
-              <option value="dropoff">I will drop it off</option>
-              <option value="pickup">Please pick it up</option>
-            </select>
+            <fieldset class="form-section">
+              <legend>Collection method</legend>
+              <div class="method-options" role="radiogroup" aria-label="Collection method">
+                <label class="method-option">
+                  <input type="radio" name="collectionMethod" value="dropoff" checked>
+                  <span class="method-option-card"><strong>Drop it off</strong><span>Bring the item to a recycling hub</span></span>
+                </label>
+                <label class="method-option">
+                  <input type="radio" name="collectionMethod" value="pickup">
+                  <span class="method-option-card"><strong>Request pickup</strong><span>Keep it ready for collection</span></span>
+                </label>
+              </div>
+              <select id="method" class="visually-hidden" tabindex="-1" aria-hidden="true">
+                <option value="dropoff" selected>Drop it off</option>
+                <option value="pickup">Request pickup</option>
+              </select>
 
-            <label for="contactPhone">Phone number for collection coordination</label>
-            <input id="contactPhone" name="phone" type="tel" required autocomplete="tel" inputmode="tel" pattern="\+?[0-9(). -]{7,20}" maxlength="20" placeholder="e.g. +63 912 345 6789" title="Enter 7 to 15 digits. You may include a country code, spaces, parentheses, periods, or hyphens.">
-            <label class="save-phone-option"><input id="savePhoneDefault" type="checkbox" checked><span>Save this as my default number for future requests</span></label>
+              <label for="contactPhone">Phone number for collection coordination</label>
+              <input id="contactPhone" name="phone" type="tel" required autocomplete="tel" inputmode="tel" pattern="\+?[0-9(). -]{7,20}" maxlength="20" placeholder="e.g. +63 912 345 6789" title="Enter 7 to 15 digits. You may include a country code, spaces, parentheses, periods, or hyphens.">
+              <label class="save-phone-option"><input id="savePhoneDefault" type="checkbox" checked><span>Save this as my default number for future requests</span></label>
+            </fieldset>
 
-            <label>Pin your location</label>
-            <div id="userMap"></div>
-            <div class="button-row"><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="action reject" id="centerLocation">Center map</button></div>
-            <p class="hint" id="locationStatus">Click the map or use GPS to place your pin.</p>
-            <p class="hint" id="locationDetails">Nearest hub and road route will appear after you pin a location.</p>
+            <fieldset class="form-section">
+              <legend>Location</legend>
+              <label>Pin your location</label>
+              <div id="userMap"></div>
+              <div class="button-row"><button type="button" class="action approve" id="locate">Use live GPS</button><button type="button" class="quiet" id="centerLocation">Center map</button></div>
+              <p class="hint" id="locationStatus">Click the map or use GPS to place your pin.</p>
+              <p class="hint" id="locationDetails">Nearest hub and road route will appear after you pin a location.</p>
+            </fieldset>
 
             <input id="latitude" type="hidden">
             <input id="longitude" type="hidden">

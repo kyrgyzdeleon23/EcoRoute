@@ -160,7 +160,11 @@ function routeSummary(route) {
 }
 
 function approvalGuidance(item) {
-  if (item.status === "Pending") return '<div class="hint">Awaiting admin approval. Do not drop off this item yet.</div>';
+  if (item.status === "Pending") {
+    return item.method === "pickup"
+      ? '<div class="hint">Awaiting admin approval. Keep this item ready for pickup.</div>'
+      : '<div class="hint">Awaiting admin approval. Do not drop off this item yet.</div>';
+  }
   if (item.status === "Rejected") return '<div class="hint">This request was not approved. Please submit a new request if needed.</div>';
   if (item.status === "Completed") return `<div class="hint"><strong>Completed:</strong> ${item.method === "dropoff" ? "Drop-off confirmed by admin." : "Pickup confirmed by admin."}</div>`;
   if (item.method === "dropoff") return '<div class="hint"><strong>Approved:</strong> You may now take this item to the listed drop-off point.</div>';
@@ -479,6 +483,12 @@ $("#centerLocation").addEventListener("click", () => {
   }, { enableHighAccuracy: true });
 });
 
+document.querySelectorAll('input[name="collectionMethod"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) $("#method").value = radio.value;
+  });
+});
+
 $("#requestForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!$("#latitude").value || !$("#longitude").value) {
@@ -501,6 +511,7 @@ $("#requestForm").addEventListener("submit", async (event) => {
   try {
     await api("/api/e-waste", { method: "POST", body: JSON.stringify({ category: $("#category").value, item: $("#item").value, method: $("#method").value, phone, save_phone_default: savePhoneDefault, latitude: $("#latitude").value, longitude: $("#longitude").value }) });
     event.target.reset();
+    $("#method").value = "dropoff";
     $("#contactPhone").value = savePhoneDefault ? phone : "";
     $("#savePhoneDefault").checked = savePhoneDefault;
     $("#locationStatus").textContent = "Location is required before submitting.";
