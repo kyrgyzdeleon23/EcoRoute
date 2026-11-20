@@ -7,6 +7,16 @@ let pendingApiRequests = 0;
 let lastUserRequestsSnapshot = null;
 let adminLoadToken = 0;
 let activeRequestLocation;
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+const SESSION_ACTIVITY_REFRESH_MS = 60 * 1000;
+const startupStartedAt = Date.now();
+let inactivityTimer;
+let lastUserActivityAt = 0;
+let lastSessionRefreshAt = 0;
+let lastPointerMoveAt = 0;
+let sessionMonitorActive = false;
+let sessionRefreshPending = false;
+let logoutInProgress = false;
 
 const confirmationDialog = $("#confirmationDialog");
 if (confirmationDialog && !confirmationDialog.querySelector('form[method="dialog"]')) {
@@ -40,6 +50,112 @@ function updateLoadingBar() {
   loadingBar.setAttribute("aria-valuetext", isLoading ? "Processing request" : "Idle");
   loadingGear.hidden = !isLoading;
 }
+
+function dismissStartupScreen() {
+  const screen = $("#startupScreen");
+  if (!screen) return Promise.resolve();
+  const delay = Math.max(0, 650 - (Date.now() - startupStartedAt));
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delay);
+  }).then(() => {
+    screen.classList.add("startup-screen-leaving");
+    window.setTimeout(() => screen.remove(), 320);
+  });
+}
+
+function showAuthAfterSessionEnd(message) {
+  $("#userApp").style.display = "none";
+  $("#adminApp").style.display = "none";
+  if (liveGpsWatch != null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(liveGpsWatch);
+    liveGpsWatch = undefined;
+  }
+  const authView = $("#authView");
+  authView.style.display = "grid";
+  authView.classList.remove("hidden", "leaving");
+  authView.setAttribute("aria-hidden", "false");
+  $("#authError").textContent = message;
+}
+
+function handleSessionExpired() {
+  if (!sessionMonitorActive) return;
+  sessionMonitorActive = false;
+  window.clearTimeout(inactivityTimer);
+  showAuthAfterSessionEnd("Your session expired. Please log in again.");
+}
+
+async function logoutForInactivity() {
+  if (!sessionMonitorActive || logoutInProgress) return;
+  logoutInProgress = true;
+  sessionMonitorActive = false;
+  window.clearTimeout(inactivityTimer);
+  let logoutError;
+  try {
+    await api("/api/logout", { method: "POST" });
+  } catch (error) {
+    logoutError = error;
+  }
+  showAuthAfterSessionEnd("You were logged out after 30 minutes of inactivity. Please log in again.");
+  if (logoutError) notify(`The server could not confirm logout: ${logoutError.message}`, "error");
+  logoutInProgress = false;
+}
+
+function scheduleInactivityLogout() {
+  if (!sessionMonitorActive) return;
+  window.clearTimeout(inactivityTimer);
+  const remaining = Math.max(0, INACTIVITY_TIMEOUT_MS - (Date.now() - lastUserActivityAt));
+  inactivityTimer = window.setTimeout(() => {
+    if (Date.now() - lastUserActivityAt >= INACTIVITY_TIMEOUT_MS) {
+      logoutForInactivity();
+    } else {
+      scheduleInactivityLogout();
+    }
+  }, remaining);
+}
+
+function refreshSessionActivity(force = false) {
+  const now = Date.now();
+  if (!sessionMonitorActive || sessionRefreshPending
+    || (!force && now - lastSessionRefreshAt < SESSION_ACTIVITY_REFRESH_MS)) return;
+  lastSessionRefreshAt = now;
+  sessionRefreshPending = true;
+  api("/api/session/refresh", { method: "POST" })
+    .catch((error) => {
+      if (sessionMonitorActive) notify(`Your session activity could not be refreshed: ${error.message}`, "error");
+    })
+    .finally(() => { sessionRefreshPending = false; });
+}
+
+function startSessionMonitor() {
+  sessionMonitorActive = true;
+  lastUserActivityAt = Date.now();
+  lastSessionRefreshAt = 0;
+  scheduleInactivityLogout();
+  refreshSessionActivity(true);
+}
+
+function recordUserActivity() {
+  if (!sessionMonitorActive) return;
+  lastUserActivityAt = Date.now();
+  scheduleInactivityLogout();
+  refreshSessionActivity();
+}
+
+document.addEventListener("pointerdown", recordUserActivity, { passive: true });
+document.addEventListener("keydown", recordUserActivity);
+document.addEventListener("touchstart", recordUserActivity, { passive: true });
+document.addEventListener("scroll", recordUserActivity, { passive: true });
+document.addEventListener("pointermove", () => {
+  if (Date.now() - lastPointerMoveAt < 10000) return;
+  lastPointerMoveAt = Date.now();
+  recordUserActivity();
+}, { passive: true });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && sessionMonitorActive) {
+    if (Date.now() - lastUserActivityAt >= INACTIVITY_TIMEOUT_MS) logoutForInactivity();
+    else scheduleInactivityLogout();
+  }
+});
 
 function notify(message, type = "success") {
   const stack = $("#notificationStack");
@@ -122,7 +238,10 @@ async function api(url, options = {}) {
       ...options,
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Something went wrong");
+    if (!response.ok) {
+      if (response.status === 401) handleSessionExpired();
+      throw new Error(data.error || "Something went wrong");
+    }
     return data;
   } finally {
     pendingApiRequests = Math.max(0, pendingApiRequests - 1);
@@ -147,6 +266,7 @@ function showApp(user, animate = true) {
     authView.setAttribute("aria-hidden", "true");
   }
   $(user.role === "admin" ? "#adminName" : "#userName").textContent = user.name;
+  startSessionMonitor();
   if (user.role === "admin") {
     loadAdmin().catch((error) => notify(`Admin requests could not be loaded: ${error.message}`, "error"));
     EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
@@ -225,18 +345,27 @@ function completionSummary(item) {
 
 function lifecycleSummary(item) {
   const events = [["Submitted", item.created_at], ["Approved", item.approved_at], ["Rejected", item.rejected_at], ["Completed", item.completed_at]];
-  let latestEventIndex = -1;
-  let latestEventTime = Number.NEGATIVE_INFINITY;
-  events.forEach(([, timestamp], index) => {
-    if (!timestamp) return;
-    const eventTime = new Date(timestamp).getTime();
-    if (Number.isFinite(eventTime) && eventTime >= latestEventTime) {
-      latestEventIndex = index;
-      latestEventTime = eventTime;
-    }
-  });
+  const currentStatusEvent = {
+    Pending: "Submitted",
+    Approved: "Approved",
+    Rejected: "Rejected",
+    Completed: "Completed",
+  }[item.status];
+  let latestEventIndex = events.findIndex(([label, timestamp]) =>
+    label === currentStatusEvent && timestamp);
   if (latestEventIndex < 0) {
-    latestEventIndex = events.reduce((latest, [, timestamp], index) => timestamp ? index : latest, -1);
+    let latestEventTime = Number.NEGATIVE_INFINITY;
+    events.forEach(([, timestamp], index) => {
+      if (!timestamp) return;
+      const eventTime = new Date(timestamp).getTime();
+      if (Number.isFinite(eventTime) && eventTime >= latestEventTime) {
+        latestEventIndex = index;
+        latestEventTime = eventTime;
+      }
+    });
+    if (latestEventIndex < 0) {
+      latestEventIndex = events.reduce((latest, [, timestamp], index) => timestamp ? index : latest, -1);
+    }
   }
   return `<ol class="request-timeline" aria-label="Request timeline">${events.map(([label, timestamp], index) => {
     if (!timestamp) return "";
@@ -878,7 +1007,10 @@ window.removeHub = async (name, button) => {
     $("#category").innerHTML = Object.keys(config.categories).map((category) => `<option>${category}</option>`).join("");
     renderItems();
     renderRisk();
+    await dismissStartupScreen();
   } catch (error) {
+    $("#authView").style.display = "grid";
     $("#authError").textContent = error.message;
+    await dismissStartupScreen();
   }
 })();

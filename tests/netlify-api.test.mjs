@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 
 import { createHandler } from "../netlify/functions/api.mjs";
@@ -122,6 +123,18 @@ async function login(handler, email = "resident@example.com") {
   return result.headers.get("set-cookie").split(";")[0];
 }
 
+function resignSessionCookie(cookie, updatePayload) {
+  const [name, token] = cookie.split("=", 2);
+  const [encoded] = token.split(".");
+  const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  updatePayload(payload);
+  const updatedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", env.FLASK_SECRET_KEY)
+    .update(updatedPayload)
+    .digest("base64url");
+  return `${name}=${updatedPayload}.${signature}`;
+}
+
 test("API rejects missing production configuration instead of using volatile storage", async () => {
   const handler = createHandler({ env: {}, fetchImpl: async () => { throw new Error("unexpected fetch"); } });
   const result = await handler(makeRequest("/api/config"));
@@ -144,6 +157,30 @@ test("login issues a signed cookie that authorizes the user's request list", asy
   const result = await handler(makeRequest("/api/my-requests", { cookie }));
   assert.equal(result.status, 200);
   assert.deepEqual(await result.json(), []);
+});
+
+test("session activity refresh extends active sessions and rejects idle sessions", async () => {
+  const { fetchImpl } = createSupabaseMock();
+  const handler = createHandler({ env, fetchImpl });
+  const cookie = await login(handler);
+
+  const refreshed = await handler(makeRequest("/api/session/refresh", {
+    method: "POST",
+    cookie,
+  }));
+  assert.equal(refreshed.status, 200);
+  const refreshedCookie = refreshed.headers.get("set-cookie").split(";")[0];
+  const requests = await handler(makeRequest("/api/my-requests", { cookie: refreshedCookie }));
+  assert.equal(requests.status, 200);
+
+  const staleCookie = resignSessionCookie(cookie, (session) => {
+    session.last_activity = Math.floor(Date.now() / 1000) - 32 * 60;
+  });
+  const expired = await handler(makeRequest("/api/session/refresh", {
+    method: "POST",
+    cookie: staleCookie,
+  }));
+  assert.equal(expired.status, 401);
 });
 
 test("configuration loads hubs and route algorithms return the same shortest distance", async () => {
@@ -206,6 +243,7 @@ test("request submission validates contact numbers and stores valid requests", a
   assert.equal(store.requests[0].owner_id, "user-id");
   assert.equal(store.requests[0].data.status, "Pending");
   assert.equal(store.requests[0].data.request_number, "PU-0001");
+  assert.equal(store.requests[0].data.created_at.endsWith("Z"), true);
   assert.equal(valid.headers.get("set-cookie").includes("Secure"), true);
 });
 

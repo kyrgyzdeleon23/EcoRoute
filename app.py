@@ -1,8 +1,9 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 import os
 import re
 import secrets
+import time
 import uuid
 
 from flask import Flask, jsonify, render_template, request, session
@@ -29,11 +30,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_urlsafe(32)
 if not os.environ.get("FLASK_SECRET_KEY"):
     app.logger.warning("FLASK_SECRET_KEY is unset; sessions will expire when the app restarts.")
+SESSION_IDLE_TIMEOUT_SECONDS = 31 * 60
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "").lower() == "true",
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS),
+    SESSION_REFRESH_EACH_REQUEST=False,
 )
 
 pq = EwastePriorityQueue()
@@ -72,9 +75,18 @@ AUDIT_LOG = []
 PROFILE_PHONES = {}
 
 
+def utc_iso_seconds():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def current_user():
     user_id = session.get("user_id")
     if not user_id:
+        return None
+    last_activity = session.get("last_activity")
+    elapsed = time.time() - last_activity if isinstance(last_activity, (int, float)) else None
+    if elapsed is None or elapsed < 0 or elapsed >= SESSION_IDLE_TIMEOUT_SECONDS:
+        session.clear()
         return None
     return {
         "id": user_id,
@@ -197,7 +209,7 @@ def add_audit(request_id, action, request_number):
         "action": action,
         "admin": user["name"],
         "admin_username": user["id"],
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "timestamp": utc_iso_seconds(),
     }
     if is_configured():
         database().table("audit_log").insert({"data": entry}).execute()
@@ -380,7 +392,13 @@ def signup():
         })
     session.clear()
     session.permanent = True
-    session.update({"user_id": user_id, "name": name, "role": "user", "phone": ""})
+    session.update({
+        "user_id": user_id,
+        "name": name,
+        "role": "user",
+        "phone": "",
+        "last_activity": int(time.time()),
+    })
     return jsonify({"status": "success", "role": "user", "name": name})
 
 
@@ -425,8 +443,16 @@ def login():
         "name": profile["name"],
         "role": profile["role"],
         "phone": profile.get("phone") or "",
+        "last_activity": int(time.time()),
     })
     return jsonify({"status": "success", "role": profile["role"], "name": profile["name"]})
+
+
+@app.route("/api/session/refresh", methods=["POST"])
+@protected()
+def refresh_session():
+    session["last_activity"] = int(time.time())
+    return jsonify({"status": "success"})
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -476,7 +502,7 @@ def add_ewaste():
         "phone": phone,
         "latitude": latitude, "longitude": longitude, "weight": details["weight"],
         "hazard": details["hazard"], "urgency": details["hazard"], "status": "Pending",
-        "priority_score": 0, "created_at": datetime.now().isoformat(timespec="seconds"),
+        "priority_score": 0, "created_at": utc_iso_seconds(),
     }
     request_item["priority_score"] = round(priority_score(request_item), 2)
     save_request(request_item)
@@ -551,7 +577,7 @@ def update_request(item_id):
         if request_item["status"] != "Approved":
             return jsonify({"error": "Only approved requests can be completed"}), 400
         request_item["status"] = "Completed"
-        request_item["completed_at"] = datetime.now().isoformat(timespec="seconds")
+        request_item["completed_at"] = utc_iso_seconds()
         save_request(request_item)
         add_audit(item_id, "completed", request_reference(request_item))
         pq.remove_request(request_item["id"])
@@ -565,7 +591,7 @@ def update_request(item_id):
         return jsonify({"status": "success", "request": public_request(request_item)})
 
     request_item["status"] = "Approved" if action == "approve" else "Rejected"
-    timestamp = datetime.now().isoformat(timespec="seconds")
+    timestamp = utc_iso_seconds()
     if action == "approve":
         request_item["approved_at"] = timestamp
     else:

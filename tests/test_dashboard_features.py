@@ -1,3 +1,4 @@
+import time
 import unittest
 import uuid
 from datetime import date
@@ -13,7 +14,12 @@ class DashboardFeatureTests(unittest.TestCase):
         self.user_id = f"dashboard-test-{uuid.uuid4()}"
         self.audit_log_size = len(app_module.AUDIT_LOG)
         with self.client.session_transaction() as session:
-            session.update(user_id=self.user_id, name="Test Resident", role="user")
+            session.update(
+                user_id=self.user_id,
+                name="Test Resident",
+                role="user",
+                last_activity=int(time.time()),
+            )
         self.request_ids = []
 
     def tearDown(self):
@@ -70,6 +76,25 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item["id"] for item in response.get_json()], [matching_id])
 
+    def test_inactive_session_expires_and_config_returns_no_user(self):
+        with self.client.session_transaction() as session:
+            session["last_activity"] = int(time.time()) - app_module.SESSION_IDLE_TIMEOUT_SECONDS - 1
+
+        response = self.client.get("/api/my-requests")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json(), {"error": "Login required"})
+        self.assertIsNone(self.client.get("/api/config").get_json()["user"])
+
+    def test_session_activity_refresh_updates_last_activity(self):
+        with self.client.session_transaction() as session:
+            session["last_activity"] = int(time.time()) - 120
+
+        response = self.client.post("/api/session/refresh")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"status": "success"})
+        with self.client.session_transaction() as session:
+            self.assertGreaterEqual(session["last_activity"], int(time.time()) - 1)
+
     def test_admin_request_filters_reject_invalid_date_range(self):
         with self.client.session_transaction() as session:
             session["role"] = "admin"
@@ -95,7 +120,9 @@ class DashboardFeatureTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.request_ids.append(response.get_json()["id"])
+        request_id = response.get_json()["id"]
+        self.request_ids.append(request_id)
+        self.assertTrue(app_module.REQUESTS[request_id]["created_at"].endswith("+00:00"))
         self.assertEqual(app_module.PROFILE_PHONES[self.user_id], "+63 912-345-6789")
         config = self.client.get("/api/config").get_json()
         self.assertEqual(config["user"]["phone"], "+63 912-345-6789")

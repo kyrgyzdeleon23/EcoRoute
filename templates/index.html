@@ -42,6 +42,91 @@
       font: 15px 'DM Sans', sans-serif;
     }
 
+    .startup-screen {
+      position: fixed;
+      z-index: 3000;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(ellipse at 18% 16%, #8bc34a30, transparent 42%),
+        linear-gradient(135deg, #f8fbf5, #e7f2df);
+      opacity: 1;
+      transition: opacity .32s ease, visibility .32s ease;
+    }
+
+    .startup-screen-leaving {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .startup-content {
+      display: grid;
+      justify-items: center;
+      gap: 20px;
+    }
+
+    .startup-brand {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-radius: 20px;
+      color: var(--leaf);
+      background: var(--white);
+      box-shadow: 0 16px 38px #173a251a;
+    }
+
+    .startup-brand img {
+      position: relative;
+      z-index: 2;
+      width: 64px;
+      height: 64px;
+      object-fit: contain;
+    }
+
+    .startup-brand span {
+      position: relative;
+      z-index: 2;
+      font: 700 clamp(1.7rem, 5vw, 2.25rem) 'Space Grotesk', sans-serif;
+      white-space: nowrap;
+    }
+
+    .startup-route-line {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .startup-route-line rect {
+      fill: none;
+      stroke: #4b963d;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 125 310;
+      animation: startup-route-travel 4.6s linear infinite;
+    }
+
+    .startup-message {
+      margin: 0;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 500;
+    }
+
+    @keyframes startup-route-travel {
+      0%, 12% { stroke-dashoffset: 435; }
+      42%, 54% { stroke-dashoffset: 217.5; }
+      84%, 100% { stroke-dashoffset: 0; }
+    }
+
     .loading-bar {
       position: fixed;
       z-index: 2000;
@@ -445,6 +530,11 @@
       padding: 24px;
       border-radius: var(--radius-card);
       box-shadow: var(--shadow-card);
+    }
+
+    #adminQueueSection {
+      padding-top: 28px;
+      padding-bottom: 20px;
     }
 
     .tabs {
@@ -1147,6 +1237,44 @@
       color: var(--leaf);
     }
 
+    .app-header .route-brand {
+      position: relative;
+      isolation: isolate;
+      gap: 9px;
+      padding: 6px 12px;
+      border-radius: 17px;
+    }
+
+    .route-brand > .brand-logo,
+    .route-brand > span {
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-route-line {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .brand-route-line rect {
+      fill: none;
+      stroke: #67a849;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-dasharray: 125 310;
+      stroke-dashoffset: 435;
+      animation: route-line-travel 7s linear infinite;
+    }
+
+    @keyframes route-line-travel {
+      to { stroke-dashoffset: 0; }
+    }
+
     .app.entering {
       animation: dashboard-enter .38s cubic-bezier(.22, 1, .36, 1) both;
     }
@@ -1738,6 +1866,16 @@
         scroll-behavior: auto;
       }
 
+      .startup-screen {
+        transition: none;
+      }
+
+      .startup-route-line rect {
+        stroke-dashoffset: 0;
+        opacity: .5;
+        animation: none;
+      }
+
       .auth,
       .overview-hero {
         animation: none;
@@ -1750,6 +1888,13 @@
 
       .auth-leaves {
         display: none;
+      }
+
+      .brand-route-line rect {
+        stroke-dasharray: 125 310;
+        stroke-dashoffset: 0;
+        opacity: .3;
+        animation: none;
       }
 
       .auth .primary,
@@ -1925,6 +2070,11 @@
 
       .panel {
         padding: 20px;
+      }
+
+      #adminQueueSection {
+        padding-top: 24px;
+        padding-bottom: 20px;
       }
 
       table:not(.request-table) {
@@ -2211,6 +2361,11 @@
         border-radius: 20px;
       }
 
+      #adminQueueSection {
+        padding-top: 20px;
+        padding-bottom: 16px;
+      }
+
       .request-filter-grid {
         grid-template-columns: minmax(0, 1fr);
         gap: 12px;
@@ -2219,6 +2374,16 @@
   </style>
 </head>
 <body>
+  <div id="startupScreen" class="startup-screen" role="status" aria-live="polite">
+    <div class="startup-content">
+      <div class="startup-brand">
+        <img src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
+        <span>EcoRoute</span>
+        <svg class="startup-route-line" viewBox="0 0 180 56" preserveAspectRatio="none" aria-hidden="true"><rect x="1" y="1" width="178" height="54" rx="17"></rect></svg>
+      </div>
+      <p class="startup-message">Starting EcoRoute...</p>
+    </div>
+  </div>
   <div id="loadingBar" class="loading-bar" role="progressbar" aria-label="Processing" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Idle" aria-busy="false" hidden>
     <span class="visually-hidden">Processing your request</span>
   </div>
@@ -2304,9 +2469,10 @@
   <div id="userApp" class="app">
     <header class="app-header">
       <div class="shell">
-        <div class="brand">
+        <div class="brand route-brand">
           <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
           <span>EcoRoute</span>
+          <svg class="brand-route-line" viewBox="0 0 180 56" preserveAspectRatio="none" aria-hidden="true"><rect x="1" y="1" width="178" height="54" rx="17"></rect></svg>
         </div>
         <div class="usernav">
           <span id="userName"></span>
@@ -2433,9 +2599,10 @@
   <div id="adminApp" class="app">
     <header class="app-header">
       <div class="shell">
-        <div class="brand">
+        <div class="brand route-brand">
           <img class="brand-logo" src="{{ url_for('static', filename='ecoroute-logo.png') }}" alt="">
           <span>EcoRoute</span>
+          <svg class="brand-route-line" viewBox="0 0 180 56" preserveAspectRatio="none" aria-hidden="true"><rect x="1" y="1" width="178" height="54" rx="17"></rect></svg>
         </div>
         <div class="usernav">
           <span id="adminName"></span>

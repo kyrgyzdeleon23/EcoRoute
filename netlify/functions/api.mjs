@@ -1,7 +1,8 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 const COOKIE_NAME = "ecoroute_session";
-const SESSION_TTL_SECONDS = 12 * 60 * 60;
+const SESSION_TTL_SECONDS = 31 * 60;
+const SESSION_IDLE_TIMEOUT_SECONDS = 31 * 60;
 
 const ITEMS = {
   "Batteries & Energy Storage": {
@@ -196,12 +197,16 @@ function readSession(request, secret) {
 
   try {
     const session = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    const now = Math.floor(Date.now() / 1000);
     if (
       typeof session.user_id !== "string"
       || typeof session.name !== "string"
       || !["user", "admin"].includes(session.role)
       || !Number.isInteger(session.expires_at)
-      || session.expires_at <= Math.floor(Date.now() / 1000)
+      || !Number.isInteger(session.last_activity)
+      || session.expires_at <= now
+      || session.last_activity > now
+      || now - session.last_activity >= SESSION_IDLE_TIMEOUT_SECONDS
     ) {
       return null;
     }
@@ -212,12 +217,14 @@ function readSession(request, secret) {
 }
 
 function sessionCookie(session, env) {
+  const now = Math.floor(Date.now() / 1000);
   const token = signSession({
     user_id: session.user_id,
     name: session.name,
     role: session.role,
     phone: session.phone || "",
-    expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    last_activity: now,
+    expires_at: now + SESSION_TTL_SECONDS,
   }, env.FLASK_SECRET_KEY);
   const secure = env.COOKIE_SECURE?.toLowerCase() === "true" ? "; Secure" : "";
   return `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; SameSite=Lax${secure}`;
@@ -517,7 +524,7 @@ async function addAudit(fetchImpl, env, session, requestId, action, requestNumbe
     action,
     admin: session.name,
     admin_username: session.user_id,
-    timestamp: localIsoSeconds(),
+    timestamp: utcIsoSeconds(),
   };
   await supabaseRequest(fetchImpl, env, "audit_log", {
     method: "POST",
@@ -526,10 +533,8 @@ async function addAudit(fetchImpl, env, session, requestId, action, requestNumbe
   });
 }
 
-function localIsoSeconds() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 19);
+function utcIsoSeconds() {
+  return new Date().toISOString().slice(0, 19) + "Z";
 }
 
 async function requestRoute(item, hubData, fetchImpl) {
@@ -597,6 +602,15 @@ async function handleApi(request, fetchImpl, env) {
   const path = url.pathname;
   const method = request.method.toUpperCase();
   const session = readSession(request, env.FLASK_SECRET_KEY);
+
+  if (path === "/api/session/refresh" && method === "POST") {
+    if (!session) throw new ApiError(401, "Session expired or login required");
+    return response(
+      { status: "success" },
+      200,
+      { "Set-Cookie": sessionCookie(session, env) },
+    );
+  }
 
   if (path === "/api/config" && method === "GET") {
     const hubData = await loadHubs(fetchImpl, env);
@@ -827,7 +841,7 @@ async function handleApi(request, fetchImpl, env) {
       urgency: details.hazard,
       status: "Pending",
       priority_score: 0,
-      created_at: localIsoSeconds(),
+      created_at: utcIsoSeconds(),
     };
     item.priority_score = Number(priorityScore(item).toFixed(2));
     await saveRequest(fetchImpl, env, item);
@@ -914,14 +928,14 @@ async function handleApi(request, fetchImpl, env) {
         throw new ApiError(400, "Only approved requests can be completed");
       }
       item.status = "Completed";
-      item.completed_at = localIsoSeconds();
+      item.completed_at = utcIsoSeconds();
       await saveRequest(fetchImpl, env, item);
       await addAudit(fetchImpl, env, session, itemId, "completed", requestReference(item));
       return response({ status: "success", request: publicRequest(item) });
     }
 
     item.status = data.action === "approve" ? "Approved" : "Rejected";
-    const timestamp = localIsoSeconds();
+    const timestamp = utcIsoSeconds();
     if (data.action === "approve") item.approved_at = timestamp;
     else item.rejected_at = timestamp;
     if (data.action === "approve") {
