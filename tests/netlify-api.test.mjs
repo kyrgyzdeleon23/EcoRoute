@@ -31,9 +31,15 @@ const edgeRows = [
 function createSupabaseMock({ requests = [], audits = [] } = {}) {
   const store = {
     requests: structuredClone(requests),
+    settings: [{
+      key: "pickup_route",
+      data: { sort_by: "nearest", starting_hub: "Batangas City" },
+    }],
     profiles: [],
     audits: structuredClone(audits).map((data, index) => ({ id: String(index + 1), data })),
     nextAuditId: audits.length + 1,
+    passwordRecoveries: [],
+    passwordUpdates: [],
     hubs: structuredClone(hubRows),
     edges: structuredClone(edgeRows),
   };
@@ -48,8 +54,30 @@ function createSupabaseMock({ requests = [], audits = [] } = {}) {
         user: { id },
       });
     }
+    if (url.pathname.endsWith("/auth/v1/recover")) {
+      store.passwordRecoveries.push(JSON.parse(init.body));
+      return new Response(null, { status: 200 });
+    }
+    if (url.pathname.endsWith("/auth/v1/user") && init.method === "PUT") {
+      store.passwordUpdates.push({
+        authorization: new Headers(init.headers).get("authorization"),
+        body: JSON.parse(init.body),
+      });
+      return Response.json({ id: "user-id" });
+    }
 
     const table = url.pathname.split("/").at(-1);
+    if (table === "app_settings") {
+      if (init.method === "POST") {
+        const row = JSON.parse(init.body);
+        const existingIndex = store.settings.findIndex((setting) => setting.key === row.key);
+        if (existingIndex < 0) store.settings.push(row);
+        else store.settings[existingIndex] = row;
+        return new Response(null, { status: 204 });
+      }
+      const key = url.searchParams.get("key")?.slice(3);
+      return Response.json(store.settings.filter((setting) => !key || setting.key === key));
+    }
     if (table === "hubs") {
       if (init.method === "DELETE") {
         const name = url.searchParams.get("name")?.slice(3);
@@ -163,6 +191,96 @@ test("login issues a signed cookie that authorizes the user's request list", asy
   const result = await handler(makeRequest("/api/my-requests", { cookie }));
   assert.equal(result.status, 200);
   assert.deepEqual(await result.json(), []);
+});
+
+test("password recovery sends a generic email response and accepts the recovery token", async () => {
+  const { fetchImpl, store } = createSupabaseMock();
+  const handler = createHandler({ env, fetchImpl });
+  const invalid = await handler(makeRequest("/api/forgot-password", {
+    method: "POST",
+    body: { email: "not-an-email" },
+  }));
+  assert.equal(invalid.status, 400);
+
+  const forgotten = await handler(makeRequest("/api/forgot-password", {
+    method: "POST",
+    body: { email: "Resident@example.com" },
+  }));
+  assert.equal(forgotten.status, 200);
+  assert.match((await forgotten.json()).message, /If an account exists/);
+  assert.deepEqual(store.passwordRecoveries, [{ email: "resident@example.com" }]);
+
+  const changed = await handler(makeRequest("/api/reset-password", {
+    method: "POST",
+    body: { access_token: "recovery-token", password: "new-password" },
+  }));
+  assert.equal(changed.status, 200);
+  assert.deepEqual(store.passwordUpdates, [{
+    authorization: "Bearer recovery-token",
+    body: { password: "new-password" },
+  }]);
+});
+
+test("admin dispatch plan orders approved pickups and returns queue ETAs to residents", async () => {
+  const { fetchImpl, store } = createSupabaseMock({
+    requests: [
+      {
+        id: "near-stop",
+        owner_id: "user-id",
+        data: {
+          id: "near-stop",
+          request_number: "PU-0001",
+          name: "Test Resident",
+          item: "Keyboard",
+          method: "pickup",
+          hazard: 1,
+          status: "Approved",
+          latitude: 13.76,
+          longitude: 121.06,
+          created_at: "2026-11-20T09:00:00Z",
+        },
+      },
+      {
+        id: "hazard-stop",
+        owner_id: "user-id",
+        data: {
+          id: "hazard-stop",
+          request_number: "PU-0002",
+          name: "Test Resident",
+          item: "Battery",
+          method: "pickup",
+          hazard: 5,
+          status: "Approved",
+          latitude: 14.95,
+          longitude: 120.9,
+          created_at: "2026-11-20T10:00:00Z",
+        },
+      },
+    ],
+  });
+  const handler = createHandler({ env, fetchImpl });
+  const adminCookie = await login(handler, "admin@example.com");
+  const initial = await handler(makeRequest("/api/admin/pickup-route", { cookie: adminCookie }));
+  assert.equal((await initial.json()).stops[0].id, "near-stop");
+
+  const updated = await handler(makeRequest("/api/admin/pickup-route", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { sort_by: "hazard", starting_hub: "Bulacan Baliwag" },
+  }));
+  assert.equal(updated.status, 200);
+  const route = await updated.json();
+  assert.equal(route.starting_hub, "Bulacan Baliwag");
+  assert.deepEqual(route.stops.map((stop) => stop.id), ["hazard-stop", "near-stop"]);
+  assert.equal(store.settings[0].data.sort_by, "hazard");
+
+  const residentCookie = await login(handler);
+  const mine = await handler(makeRequest("/api/my-requests", { cookie: residentCookie }));
+  const requests = await mine.json();
+  const hazardRequest = requests.find((item) => item.id === "hazard-stop");
+  assert.equal(hazardRequest.queue_position, 1);
+  assert.equal(typeof hazardRequest.eta_minutes, "number");
+  assert.equal(hazardRequest.starting_hub, "Bulacan Baliwag");
 });
 
 test("session activity refresh extends active sessions and rejects idle sessions", async () => {

@@ -7,6 +7,7 @@ let pendingApiRequests = 0;
 let lastUserRequestsSnapshot = null;
 let adminLoadToken = 0;
 let activeRequestLocation;
+let recoveryAccessToken = null;
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_ACTIVITY_REFRESH_MS = 60 * 1000;
 const startupStartedAt = Date.now();
@@ -270,7 +271,9 @@ function showApp(user, animate = true) {
   if (user.role === "admin") {
     loadAdmin().catch((error) => notify(`Admin requests could not be loaded: ${error.message}`, "error"));
     EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
+    EcoRouteMap.initPickupRouteMap();
     renderHubList();
+    loadPickupRoute().catch((error) => notify(`Pickup route could not be loaded: ${error.message}`, "error"));
     loadInventorySummary().catch((error) => notify(`Inventory could not be loaded: ${error.message}`, "error"));
     loadAuditHistory().catch((error) => notify(`Audit history could not be loaded: ${error.message}`, "error"));
   } else {
@@ -414,6 +417,14 @@ function requestReference(item) {
   return item.request_number || `ER-${String(item.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`;
 }
 
+function pickupQueueSummary(item) {
+  if (item.method !== "pickup" || item.status !== "Approved" || !item.queue_position) return "";
+  const sortLabel = item.dispatch_sort === "hazard" ? "hazard priority" : "nearby location";
+  const eta = Number.isFinite(item.eta_minutes) ? ` · ETA ~${item.eta_minutes} min after dispatch` : "";
+  const hub = item.starting_hub ? ` from ${escapeHtml(item.starting_hub)}` : "";
+  return `<div class="hint"><strong>Pickup queue:</strong> #${item.queue_position}${eta}${hub} · ordered by ${sortLabel}</div>`;
+}
+
 function adminActionButtons(item) {
   let actions = "";
   if (item.status === "Pending") actions += `<button type="button" class="action approve" onclick="updateRequest('${item.id}','approve',this)">Approve</button><button type="button" class="action reject" onclick="updateRequest('${item.id}','reject',this)">Reject</button>`;
@@ -440,7 +451,7 @@ function requestTable(items, admin = false, emptyMessage = "No requests yet.", h
   return `<table class="request-table${history ? " admin-history-table" : ""}"><thead><tr><th>Request</th><th>Resident</th><th>Item</th><th>Method</th><th>Risk</th><th>Score</th><th>Status</th><th>Location</th>${admin ? "<th>Action</th>" : ""}</tr></thead><tbody>${items.map((item) => {
     const reference = requestReference(item);
     const method = methodBadge(item.method);
-    const statusDetails = `${approvalGuidance(item)}${lifecycleSummary(item)}${routeSummary(item.route, item)}${item.queue_number ? `<div class="hint">Pickup queue #${item.queue_number}</div>` : ""}`;
+    const statusDetails = `${approvalGuidance(item)}${pickupQueueSummary(item)}${lifecycleSummary(item)}${routeSummary(item.route, item)}`;
     return `<tr data-request-id="${escapeHtml(item.id)}"><td data-label="Request">${escapeHtml(reference)}</td>${residentCell(item, admin)}<td data-label="Item">${escapeHtml(item.item)}<span class="request-mobile-method">${method}</span></td><td data-label="Method">${method}</td><td data-label="Risk"><strong>${item.hazard}/5</strong></td><td data-label="Score">${item.priority_score}</td><td class="request-status-cell" data-label="Status"><span class="status status-updated ${escapeHtml(item.status)}"><span aria-hidden="true">${statusIcon[item.status] || ""}</span>${escapeHtml(item.status)}</span>${statusDetails}</td>${requestMapAction(item)}${adminActions(item, admin)}<td class="request-details-toggle"><button type="button" class="request-details-toggle-button" data-request-details aria-expanded="false" aria-controls="request-details-${escapeHtml(item.id)}">Details</button></td></tr><tr class="request-details-row" id="request-details-${escapeHtml(item.id)}" data-details-row><td colspan="${admin ? "10" : "9"}"><div class="request-detail-summary"><div class="request-details-metrics"><div class="request-detail-field"><span class="request-detail-label">Risk</span><strong>${item.hazard}/5</strong></div><div class="request-detail-field"><span class="request-detail-label">Score</span><span>${item.priority_score}</span></div><div class="request-detail-field request-detail-location"><span class="request-detail-label">Location</span>${requestMapContent(item)}</div></div><div class="request-detail-status">${statusDetails}</div></div>${admin ? `<div class="request-details-actions">${adminActionButtons(item)}</div>` : ""}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
@@ -596,10 +607,27 @@ function renderHubList() {
   const options = config.hubs.map((hub) => `<option value="${escapeHtml(hub.name)}">${escapeHtml(hub.name)}</option>`).join("");
   const previousStart = $("#routeStart").value;
   const previousEnd = $("#routeEnd").value;
+  const previousPickupStart = $("#pickupRouteStart").value;
   $("#routeStart").innerHTML = options;
   $("#routeEnd").innerHTML = options;
+  $("#pickupRouteStart").innerHTML = options;
   if (config.hubs.some((hub) => hub.name === previousStart)) $("#routeStart").value = previousStart;
   if (config.hubs.some((hub) => hub.name === previousEnd)) $("#routeEnd").value = previousEnd;
+  if (config.hubs.some((hub) => hub.name === previousPickupStart)) $("#pickupRouteStart").value = previousPickupStart;
+}
+
+async function loadPickupRoute() {
+  const route = await api("/api/admin/pickup-route");
+  $("#pickupRouteSort").value = route.sort_by;
+  $("#pickupRouteStart").value = route.starting_hub;
+  const sortLabel = route.sort_by === "hazard" ? "highest hazard first" : "nearest stop first";
+  $("#pickupRouteSummary").textContent = route.stops.length
+    ? `${route.stops.length} approved pickup${route.stops.length === 1 ? "" : "s"} · ${sortLabel} · from ${route.starting_hub} · approximately ${route.estimated_total_distance_km} km / ${route.estimated_total_minutes} min`
+    : `No approved pickups yet. The route will start at ${route.starting_hub}.`;
+  $("#pickupRouteStops").innerHTML = route.stops.length
+    ? route.stops.map((stop) => `<div class="pickup-route-stop"><span><span class="pickup-route-number">${stop.queue_position}</span>${escapeHtml(stop.request_number || stop.item)}<small>${escapeHtml(stop.name)} · Hazard ${stop.hazard}/5</small></span><strong>ETA ~${stop.eta_minutes} min</strong></div>`).join("")
+    : "";
+  EcoRouteMap.showPickupRoute(route, config.hubs);
 }
 
 async function authenticate(url, payload) {
@@ -628,7 +656,23 @@ async function authenticate(url, payload) {
   }
 }
 
+function showPasswordReset(accessToken) {
+  recoveryAccessToken = accessToken;
+  $("#authView").style.display = "grid";
+  $("#authView").classList.remove("hidden", "leaving");
+  $("#authView").setAttribute("aria-hidden", "false");
+  $("#authTabs").classList.add("hidden");
+  $("#loginForm").classList.add("hidden");
+  $("#signupForm").classList.add("hidden");
+  $("#resetPasswordForm").classList.remove("hidden");
+  $("#authError").textContent = "";
+  $("#resetPassword").focus();
+}
+
 function activateAuthTab(tab, focus = false) {
+  recoveryAccessToken = null;
+  $("#authTabs").classList.remove("hidden");
+  $("#resetPasswordForm").classList.add("hidden");
   document.querySelectorAll(".tab").forEach((item) => {
     const active = item === tab;
     item.classList.toggle("active", active);
@@ -672,9 +716,60 @@ $("#loginForm").addEventListener("submit", (event) => {
   authenticate("/api/login", { email: $("#loginEmail").value, password: $("#loginPassword").value });
 });
 
+$("#forgotPasswordButton").addEventListener("click", async (event) => {
+  const emailInput = $("#loginEmail");
+  if (!emailInput.checkValidity()) {
+    emailInput.reportValidity();
+    return;
+  }
+  const button = event.currentTarget;
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "Sending link...";
+  $("#authError").textContent = "";
+  try {
+    const result = await api("/api/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email: emailInput.value }),
+    });
+    $("#authError").textContent = result.message;
+  } catch (error) {
+    $("#authError").textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
+
 $("#signupForm").addEventListener("submit", (event) => {
   event.preventDefault();
   authenticate("/api/signup", { name: $("#signupName").value, email: $("#signupEmail").value, password: $("#signupPassword").value });
+});
+
+$("#resetPasswordForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  button.textContent = "Updating password...";
+  $("#authError").textContent = "";
+  try {
+    await api("/api/reset-password", {
+      method: "POST",
+      body: JSON.stringify({
+        access_token: recoveryAccessToken,
+        password: $("#resetPassword").value,
+      }),
+    });
+    $("#resetPassword").value = "";
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    activateAuthTab($("#loginTab"));
+    $("#authError").textContent = "Your password has been updated. You can now log in.";
+  } catch (error) {
+    $("#authError").textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Update password";
+  }
 });
 
 document.querySelectorAll(".logout").forEach((button) => button.addEventListener("click", async () => {
@@ -907,6 +1002,28 @@ $("#routePlanForm").addEventListener("submit", async (event) => {
     }
   });
 });
+$("#pickupDispatchForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await withButtonLoading(
+    $("#pickupDispatchForm button[type=submit]"),
+    "Saving plan...",
+    async () => {
+      try {
+        await api("/api/admin/pickup-route", {
+          method: "POST",
+          body: JSON.stringify({
+            sort_by: $("#pickupRouteSort").value,
+            starting_hub: $("#pickupRouteStart").value,
+          }),
+        });
+        await Promise.all([loadPickupRoute(), loadAdmin()]);
+        notify("Pickup dispatch plan saved.");
+      } catch (error) {
+        notify(`Pickup dispatch plan could not be saved: ${error.message}`, "error");
+      }
+    },
+  );
+});
 $("#hubForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const hubName = $("#hubName").value.trim();
@@ -924,6 +1041,7 @@ $("#hubForm").addEventListener("submit", async (event) => {
       $("#hubError").textContent = "";
       EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
       renderHubList();
+      await loadPickupRoute();
       notify(`Hub "${hubName}" added.`);
     } catch (error) {
       $("#hubError").textContent = error.message;
@@ -952,6 +1070,7 @@ window.updateRequest = async (id, action, button) => {
       notify(messages[action] || "Request updated.");
       loadAdmin().then(() => highlightRequestRow(id))
         .catch((error) => notify(`Request updated, but the queue could not refresh: ${error.message}`, "error"));
+      loadPickupRoute().catch((error) => notify(`Request updated, but the pickup route could not refresh: ${error.message}`, "error"));
       loadInventorySummary().catch((error) => notify(`Request updated, but inventory could not refresh: ${error.message}`, "error"));
       loadAuditHistory().catch((error) => notify(`Request updated, but audit history could not refresh: ${error.message}`, "error"));
     } catch (error) {
@@ -971,6 +1090,7 @@ window.deleteRequest = async (id, button) => {
       await api(`/api/admin/requests/${id}`, { method: "DELETE" });
       notify("Request deleted.");
       loadAdmin().catch((error) => notify(`Request deleted, but the queue could not refresh: ${error.message}`, "error"));
+      loadPickupRoute().catch((error) => notify(`Request deleted, but the pickup route could not refresh: ${error.message}`, "error"));
       loadInventorySummary().catch((error) => notify(`Request deleted, but inventory could not refresh: ${error.message}`, "error"));
       loadAuditHistory().catch((error) => notify(`Request deleted, but audit history could not refresh: ${error.message}`, "error"));
     } catch (error) {
@@ -1008,6 +1128,7 @@ window.removeHub = async (name, button) => {
       config = await api("/api/config");
       EcoRouteMap.initAdminMap(config.hubs, setHubCoordinates);
       renderHubList();
+      await loadPickupRoute();
       notify(`Hub "${name}" removed.`);
     } catch (error) {
       $("#hubError").textContent = error.message;
@@ -1017,20 +1138,31 @@ window.removeHub = async (name, button) => {
 };
 
 (async () => {
+  const recoveryParams = new URLSearchParams(window.location.hash.slice(1));
+  const recoveryToken = recoveryParams.get("access_token");
+  const recoveryError = recoveryParams.get("error_description");
+  const isRecovery = recoveryParams.get("type") === "recovery" && recoveryToken;
+  if (isRecovery) showPasswordReset(recoveryToken);
   try {
     config = await api("/api/config");
     if (config.user && config.user.role === "user") {
       $("#contactPhone").value = formatContactPhone(config.user.phone || "");
     }
-    if (config.user) showApp(config.user, false);
-    else $("#authView").style.display = "grid";
+    if (!isRecovery) {
+      if (recoveryError) {
+        $("#authError").textContent = "This password reset link is invalid or expired. Request a new link.";
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+      if (config.user && !recoveryError) showApp(config.user, false);
+      else $("#authView").style.display = "grid";
+    }
     $("#category").innerHTML = Object.keys(config.categories).map((category) => `<option>${category}</option>`).join("");
     renderItems();
     renderRisk();
     await dismissStartupScreen();
   } catch (error) {
     $("#authView").style.display = "grid";
-    $("#authError").textContent = error.message;
+    if (!isRecovery) $("#authError").textContent = error.message;
     await dismissStartupScreen();
   }
 })();

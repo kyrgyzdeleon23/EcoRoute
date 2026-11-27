@@ -41,11 +41,17 @@ create table if not exists public.hub_edges (
     check (hub_a < hub_b)
 );
 
+create table if not exists public.app_settings (
+    key text primary key,
+    data jsonb not null
+);
+
 alter table public.profiles enable row level security;
 alter table public.requests enable row level security;
 alter table public.audit_log enable row level security;
 alter table public.hubs enable row level security;
 alter table public.hub_edges enable row level security;
+alter table public.app_settings enable row level security;
 
 insert into public.hubs (name, latitude, longitude) values
     ('Batangas City', 13.7565, 121.0583),
@@ -54,6 +60,10 @@ insert into public.hubs (name, latitude, longitude) values
     ('Lucban Quezon', 14.1136, 121.5550),
     ('Bauan Batangas', 13.7917, 121.0085)
 on conflict (name) do nothing;
+
+insert into public.app_settings (key, data) values
+    ('pickup_route', '{"sort_by":"nearest","starting_hub":"Batangas City"}'::jsonb)
+on conflict (key) do nothing;
 
 insert into public.hub_edges (hub_a, hub_b, distance) values
     ('Batangas City', 'Bauan Batangas', 10.0),

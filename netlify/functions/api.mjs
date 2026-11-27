@@ -165,6 +165,33 @@ async function supabaseAuth(fetchImpl, env, endpoint, payload) {
   return data;
 }
 
+async function updateSupabaseUser(fetchImpl, env, accessToken, payload) {
+  const result = await fetchImpl(`${supabaseBaseUrl(env)}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      apikey: env.SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const text = await result.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      console.error("Supabase Auth returned an unreadable response", error);
+      throw new ApiError(502, "Supabase Auth returned an unreadable response");
+    }
+  }
+  if (!result.ok) {
+    const message = data.msg || data.message || data.error_description || data.error;
+    throw new ApiError(result.status, message || "Supabase Auth rejected the request");
+  }
+  return data;
+}
+
 function cookieValue(request, name) {
   const cookies = request.headers.get("cookie") || "";
   for (const part of cookies.split(";")) {
@@ -466,6 +493,101 @@ async function roadRoute(latitude, longitude, destination, hubs, fetchImpl) {
   }
 }
 
+async function loadPickupRouteSettings(fetchImpl, env, hubs) {
+  const rows = await supabaseRequest(fetchImpl, env, "app_settings", {
+    query: {
+      select: "data",
+      key: "eq.pickup_route",
+      limit: "1",
+    },
+  });
+  const saved = rows?.[0]?.data || {};
+  return {
+    sort_by: ["nearest", "hazard"].includes(saved.sort_by) ? saved.sort_by : "nearest",
+    starting_hub: hubs.has(saved.starting_hub) ? saved.starting_hub : hubs.keys().next().value,
+  };
+}
+
+async function savePickupRouteSettings(fetchImpl, env, settings) {
+  await supabaseRequest(fetchImpl, env, "app_settings", {
+    method: "POST",
+    query: { on_conflict: "key" },
+    body: { key: "pickup_route", data: settings },
+    prefer: "resolution=merge-duplicates,return=minimal",
+  });
+}
+
+function buildPickupRoute(requests, hubs, settings) {
+  let current = hubs.get(settings.starting_hub);
+  const remaining = requests.filter((item) =>
+    item.method === "pickup"
+    && item.status === "Approved"
+    && Number.isFinite(item.latitude)
+    && Number.isFinite(item.longitude)
+    && item.latitude >= -90
+    && item.latitude <= 90
+    && item.longitude >= -180
+    && item.longitude <= 180);
+  const stops = [];
+  let elapsedMinutes = 0;
+  let totalDistance = 0;
+
+  while (remaining.length) {
+    const distanceTo = (item) => distanceKm(
+      current.latitude,
+      current.longitude,
+      item.latitude,
+      item.longitude,
+    );
+    remaining.sort((first, second) => settings.sort_by === "hazard"
+      ? second.hazard - first.hazard
+        || distanceTo(first) - distanceTo(second)
+        || first.created_at.localeCompare(second.created_at)
+      : distanceTo(first) - distanceTo(second)
+        || second.hazard - first.hazard
+        || first.created_at.localeCompare(second.created_at));
+    const stop = remaining.shift();
+    const legDistance = distanceTo(stop);
+    elapsedMinutes += Math.ceil(legDistance * 1.3 / 30 * 60);
+    totalDistance += legDistance;
+    stops.push({
+      id: stop.id,
+      request_number: stop.request_number || null,
+      name: stop.name,
+      item: stop.item,
+      hazard: stop.hazard,
+      latitude: stop.latitude,
+      longitude: stop.longitude,
+      queue_position: stops.length + 1,
+      eta_minutes: elapsedMinutes,
+      distance_from_previous_km: Number(legDistance.toFixed(2)),
+    });
+    elapsedMinutes += 10;
+    current = { latitude: stop.latitude, longitude: stop.longitude };
+  }
+
+  return {
+    sort_by: settings.sort_by,
+    starting_hub: settings.starting_hub,
+    stops,
+    estimated_total_minutes: elapsedMinutes,
+    estimated_total_distance_km: Number(totalDistance.toFixed(2)),
+  };
+}
+
+function withPickupQueueDetails(item, stops, settings) {
+  const stop = stops.get(item.id);
+  return stop
+    ? {
+      ...item,
+      queue_position: stop.queue_position,
+      eta_minutes: stop.eta_minutes,
+      starting_hub: settings.starting_hub,
+      dispatch_sort: settings.sort_by,
+    }
+    : item;
+}
+
 async function allRequests(fetchImpl, env) {
   const rows = await supabaseRequest(fetchImpl, env, "requests", {
     query: { select: "id,owner_id,data" },
@@ -714,10 +836,18 @@ async function handleApi(request, fetchImpl, env) {
     const hubData = await loadHubs(fetchImpl, env);
     if (!hubData.hubs.has(hubName)) throw new ApiError(404, "Hub not found");
     if (hubData.hubs.size <= 1) throw new ApiError(400, "At least one hub must remain");
+    const routeSettings = await loadPickupRouteSettings(fetchImpl, env, hubData.hubs);
     await supabaseRequest(fetchImpl, env, "hubs", {
       method: "DELETE",
       query: { name: `eq.${hubName}` },
     });
+    if (routeSettings.starting_hub === hubName) {
+      const startingHub = [...hubData.hubs.keys()].find((name) => name !== hubName);
+      await savePickupRouteSettings(fetchImpl, env, {
+        ...routeSettings,
+        starting_hub: startingHub,
+      });
+    }
     return response({ status: "success" });
   }
 
@@ -789,6 +919,33 @@ async function handleApi(request, fetchImpl, env) {
       200,
       { "Set-Cookie": sessionCookie(userSession, env) },
     );
+  }
+
+  if (path === "/api/forgot-password" && method === "POST") {
+    const data = await jsonBody(request);
+    const email = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      throw new ApiError(400, "Enter a valid email address");
+    }
+    try {
+      await supabaseAuth(fetchImpl, env, "recover", { email });
+    } catch (error) {
+      if (!(error instanceof ApiError) || ![400, 404].includes(error.status)) throw error;
+    }
+    return response({
+      status: "success",
+      message: "If an account exists for that email, a password reset link has been sent.",
+    });
+  }
+
+  if (path === "/api/reset-password" && method === "POST") {
+    const data = await jsonBody(request);
+    const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : "";
+    const password = typeof data.password === "string" ? data.password : "";
+    if (!accessToken) throw new ApiError(400, "A valid password reset link is required");
+    if (password.length < 6) throw new ApiError(400, "Password must be at least 6 characters");
+    await updateSupabaseUser(fetchImpl, env, accessToken, { password });
+    return response({ status: "success" });
   }
 
   if (path === "/api/logout" && method === "POST") {
@@ -866,17 +1023,44 @@ async function handleApi(request, fetchImpl, env) {
 
   if (path === "/api/my-requests" && method === "GET") {
     requireUser(session, "user");
+    const hubData = await loadHubs(fetchImpl, env);
     const requests = await allRequests(fetchImpl, env);
+    const settings = await loadPickupRouteSettings(fetchImpl, env, hubData.hubs);
+    const route = buildPickupRoute(requests, hubData.hubs, settings);
+    const stops = new Map(route.stops.map((stop) => [stop.id, stop]));
     return response(requests
       .filter((item) => item.user === session.user_id)
-      .map(publicRequest));
+      .map((item) => publicRequest(withPickupQueueDetails(item, stops, settings))));
+  }
+
+  if (path === "/api/admin/pickup-route" && ["GET", "POST"].includes(method)) {
+    requireUser(session, "admin");
+    const hubData = await loadHubs(fetchImpl, env);
+    let settings = await loadPickupRouteSettings(fetchImpl, env, hubData.hubs);
+    if (method === "POST") {
+      const data = await jsonBody(request);
+      if (!["nearest", "hazard"].includes(data.sort_by)) {
+        throw new ApiError(400, "Choose nearest-location or hazard-level sorting");
+      }
+      if (typeof data.starting_hub !== "string" || !hubData.hubs.has(data.starting_hub)) {
+        throw new ApiError(400, "Choose a valid starting hub");
+      }
+      settings = { sort_by: data.sort_by, starting_hub: data.starting_hub };
+      await savePickupRouteSettings(fetchImpl, env, settings);
+    }
+    const route = buildPickupRoute(await allRequests(fetchImpl, env), hubData.hubs, settings);
+    return response(route);
   }
 
   if (path === "/api/admin/requests" && method === "GET") {
     requireUser(session, "admin");
     const hubData = await loadHubs(fetchImpl, env);
+    const allItems = await allRequests(fetchImpl, env);
+    const settings = await loadPickupRouteSettings(fetchImpl, env, hubData.hubs);
+    const route = buildPickupRoute(allItems, hubData.hubs, settings);
+    const stops = new Map(route.stops.map((stop) => [stop.id, stop]));
     const requests = filterAndSortRequests(
-      await allRequests(fetchImpl, env),
+      allItems,
       url.searchParams.get("search") || "",
       url.searchParams.get("sort") || "risk",
       hubData.hubs,
@@ -907,7 +1091,8 @@ async function handleApi(request, fetchImpl, env) {
       && (!hazard || item.hazard === Number(hazard))
       && (!fromDate || item.created_at.slice(0, 10) >= fromDate)
       && (!toDate || item.created_at.slice(0, 10) <= toDate));
-    return response(filtered.map(publicRequest));
+    return response(filtered.map((item) =>
+      publicRequest(withPickupQueueDetails(item, stops, settings))));
   }
 
   const requestMatch = path.match(/^\/api\/admin\/requests\/([^/]+)$/);

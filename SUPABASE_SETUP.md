@@ -15,6 +15,12 @@
 7. To make an account an administrator, run the commented profile update at the
    end of `supabase_schema.sql`, replacing the email with the administrator's
    email.
+
+Password reset links are sent by Supabase Auth. Configure the project's email
+provider and Site URL under **Authentication > URL Configuration**; the Site URL
+must point to the deployed app. If the project was set up before pickup dispatch
+was added, rerun `supabase_schema.sql` to create and seed the shared
+`app_settings` row.
 ## Publish the website with Netlify
 
 1. Push the project to a GitHub repository. Netlify uses the included

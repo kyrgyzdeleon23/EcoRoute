@@ -9,6 +9,7 @@ import uuid
 from flask import Flask, jsonify, render_template, request, session
 
 from data_algorithm import (
+    build_pickup_route,
     distance_km,
     divide_and_conquer_shortest_path,
     exhaustive_shortest_path,
@@ -22,6 +23,7 @@ from data_structures import AVLInventoryTree, EwastePriorityQueue, Graph
 from supabase_store import (
     SupabaseConfigurationError,
     auth_request,
+    auth_update_user,
     database,
     is_configured,
 )
@@ -73,6 +75,10 @@ ITEMS = {
 REQUESTS = {}
 AUDIT_LOG = []
 PROFILE_PHONES = {}
+PICKUP_ROUTE_SETTINGS = {
+    "sort_by": "nearest",
+    "starting_hub": "Batangas City",
+}
 
 
 def utc_iso_seconds():
@@ -125,6 +131,53 @@ def load_hubs():
     graph.adj.clear()
     for row in edge_rows:
         graph.add_edge(row["hub_a"], row["hub_b"], row["distance"])
+
+
+def pickup_route_settings():
+    settings = PICKUP_ROUTE_SETTINGS
+    if is_configured():
+        rows = (
+            database().table("app_settings")
+            .select("data")
+            .eq("key", "pickup_route")
+            .limit(1)
+            .execute()
+            .data
+        )
+        settings = rows[0].get("data", {}) if rows else {}
+    sort_by = settings.get("sort_by")
+    starting_hub = settings.get("starting_hub")
+    return {
+        "sort_by": sort_by if sort_by in {"nearest", "hazard"} else "nearest",
+        "starting_hub": starting_hub if starting_hub in HUBS else next(iter(HUBS)),
+    }
+
+
+def save_pickup_route_settings(settings):
+    PICKUP_ROUTE_SETTINGS.update(settings)
+    if is_configured():
+        database().table("app_settings").upsert({
+            "key": "pickup_route",
+            "data": settings,
+        }).execute()
+
+
+def pickup_route_for(requests):
+    settings = pickup_route_settings()
+    return build_pickup_route(requests, HUBS, settings)
+
+
+def with_pickup_queue_details(item, stops, settings):
+    stop = stops.get(item["id"])
+    if not stop:
+        return item
+    return {
+        **item,
+        "queue_position": stop["queue_position"],
+        "eta_minutes": stop["eta_minutes"],
+        "starting_hub": settings["starting_hub"],
+        "dispatch_sort": settings["sort_by"],
+    }
 
 
 def all_requests():
@@ -288,6 +341,30 @@ def route_preview():
     return jsonify({"destination": destination["name"], **road})
 
 
+@app.route("/api/admin/pickup-route", methods=["GET", "POST"])
+@protected("admin")
+def pickup_route_plan():
+    load_hubs()
+    if request.method == "POST":
+        data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A valid dispatch plan is required"}), 400
+        sort_by = data.get("sort_by")
+        starting_hub = data.get("starting_hub")
+        if sort_by not in {"nearest", "hazard"}:
+            return jsonify({"error": "Choose nearest-location or hazard-level sorting"}), 400
+        if starting_hub not in HUBS:
+            return jsonify({"error": "Choose a valid starting hub"}), 400
+        save_pickup_route_settings({
+            "sort_by": sort_by,
+            "starting_hub": starting_hub,
+        })
+
+    requests = all_requests()
+    route = pickup_route_for(requests)
+    return jsonify(route)
+
+
 @app.route("/api/admin/hub-route")
 @protected("admin")
 def compare_hub_routes():
@@ -348,6 +425,7 @@ def delete_hub(hub_name):
         return jsonify({"error": "Hub not found"}), 404
     if len(HUBS) <= 1:
         return jsonify({"error": "At least one hub must remain"}), 400
+    route_settings = pickup_route_settings()
     if is_configured():
         database().table("hubs").delete().eq("name", hub_name).execute()
         load_hubs()
@@ -356,6 +434,9 @@ def delete_hub(hub_name):
         graph.adj.pop(hub_name, None)
         for neighbors in graph.adj.values():
             neighbors[:] = [(name, weight) for name, weight in neighbors if name != hub_name]
+    if route_settings["starting_hub"] == hub_name:
+        route_settings["starting_hub"] = next(iter(HUBS))
+        save_pickup_route_settings(route_settings)
     return jsonify({"status": "success"})
 
 
@@ -463,6 +544,46 @@ def login():
     return jsonify({"status": "success", "role": profile["role"], "name": profile["name"]})
 
 
+@app.route("/api/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"error": "A valid email address is required"}), 400
+    email = data.get("email")
+    if not isinstance(email, str) or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
+        return jsonify({"error": "Enter a valid email address"}), 400
+    try:
+        status, result = auth_request("recover", {"email": email.strip().lower()})
+    except SupabaseConfigurationError as error:
+        return jsonify({"error": str(error)}), 503
+    if status >= 400 and status not in {400, 404}:
+        return jsonify({"error": result["error"]}), status
+    return jsonify({
+        "status": "success",
+        "message": "If an account exists for that email, a password reset link has been sent.",
+    })
+
+
+@app.route("/api/reset-password", methods=["POST"])
+def reset_password():
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"error": "A valid password reset request is required"}), 400
+    access_token = data.get("access_token")
+    password = data.get("password")
+    if not isinstance(access_token, str) or not access_token.strip():
+        return jsonify({"error": "A valid password reset link is required"}), 400
+    if not isinstance(password, str) or len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    try:
+        status, result = auth_update_user(access_token, {"password": password})
+    except SupabaseConfigurationError as error:
+        return jsonify({"error": str(error)}), 503
+    if status >= 400:
+        return jsonify({"error": result["error"]}), status
+    return jsonify({"status": "success"})
+
+
 @app.route("/api/session/refresh", methods=["POST"])
 @protected()
 def refresh_session():
@@ -529,8 +650,13 @@ def add_ewaste():
 @app.route("/api/my-requests")
 @protected("user")
 def my_requests():
+    load_hubs()
+    requests = all_requests()
+    route = pickup_route_for(requests)
+    stops = {stop["id"]: stop for stop in route["stops"]}
+    settings = pickup_route_settings()
     return jsonify([
-        public_request(item) for item in all_requests()
+        public_request(with_pickup_queue_details(item, stops, settings)) for item in requests
         if item["user"] == session["user_id"]
     ])
 
@@ -539,9 +665,13 @@ def my_requests():
 @protected("admin")
 def admin_requests():
     load_hubs()
+    requests = all_requests()
+    route = pickup_route_for(requests)
+    stops = {stop["id"]: stop for stop in route["stops"]}
+    settings = pickup_route_settings()
     search = request.args.get("search", "")
     sort_by = request.args.get("sort", "risk")
-    ordered = filter_and_sort_requests(all_requests(), search, sort_by, HUBS)
+    ordered = filter_and_sort_requests(requests, search, sort_by, HUBS)
     status = request.args.get("status", "")
     method = request.args.get("method", "")
     hazard = request.args.get("hazard", "")
@@ -568,7 +698,10 @@ def admin_requests():
         and (not start or date.fromisoformat(item["created_at"][:10]) >= start)
         and (not end or date.fromisoformat(item["created_at"][:10]) <= end)
     ]
-    return jsonify([public_request(item) for item in ordered])
+    return jsonify([
+        public_request(with_pickup_queue_details(item, stops, settings))
+        for item in ordered
+    ])
 
 
 @app.route("/api/admin/requests/<item_id>", methods=["POST"])

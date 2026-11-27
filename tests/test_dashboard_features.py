@@ -2,6 +2,7 @@ import time
 import unittest
 import uuid
 from datetime import date
+from unittest.mock import patch
 
 import app as app_module
 
@@ -13,6 +14,7 @@ class DashboardFeatureTests(unittest.TestCase):
         self.client = app_module.app.test_client()
         self.user_id = f"dashboard-test-{uuid.uuid4()}"
         self.audit_log_size = len(app_module.AUDIT_LOG)
+        self.original_pickup_route_settings = dict(app_module.PICKUP_ROUTE_SETTINGS)
         with self.client.session_transaction() as session:
             session.update(
                 user_id=self.user_id,
@@ -28,6 +30,8 @@ class DashboardFeatureTests(unittest.TestCase):
             app_module.pq.remove_request(request_id)
         del app_module.AUDIT_LOG[self.audit_log_size:]
         app_module.PROFILE_PHONES.pop(self.user_id, None)
+        app_module.PICKUP_ROUTE_SETTINGS.clear()
+        app_module.PICKUP_ROUTE_SETTINGS.update(self.original_pickup_route_settings)
         app_module.is_configured = self.original_is_configured
 
     def test_admin_request_filters_apply_together(self):
@@ -95,6 +99,27 @@ class DashboardFeatureTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             self.assertGreaterEqual(session["last_activity"], int(time.time()) - 1)
 
+    def test_password_recovery_sends_email_and_accepts_recovery_token(self):
+        invalid = self.client.post("/api/forgot-password", json={"email": "not-an-email"})
+        self.assertEqual(invalid.status_code, 400)
+
+        with patch.object(app_module, "auth_request", return_value=(200, {})) as recover:
+            response = self.client.post(
+                "/api/forgot-password",
+                json={"email": "Resident@example.com"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("If an account exists", response.get_json()["message"])
+        recover.assert_called_once_with("recover", {"email": "resident@example.com"})
+
+        with patch.object(app_module, "auth_update_user", return_value=(200, {})) as update_user:
+            changed = self.client.post(
+                "/api/reset-password",
+                json={"access_token": "recovery-token", "password": "new-password"},
+            )
+        self.assertEqual(changed.status_code, 200)
+        update_user.assert_called_once_with("recovery-token", {"password": "new-password"})
+
     def test_admin_request_filters_reject_invalid_date_range(self):
         with self.client.session_transaction() as session:
             session["role"] = "admin"
@@ -105,6 +130,59 @@ class DashboardFeatureTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_admin_dispatch_plan_orders_pickups_and_updates_resident_eta(self):
+        nearby_id = str(uuid.uuid4())
+        hazard_id = str(uuid.uuid4())
+        self.request_ids.extend((nearby_id, hazard_id))
+        app_module.REQUESTS[nearby_id] = {
+            "id": nearby_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "item": "Keyboard",
+            "method": "pickup",
+            "hazard": 1,
+            "status": "Approved",
+            "latitude": 13.76,
+            "longitude": 121.06,
+            "created_at": "2026-11-20T09:00:00+00:00",
+        }
+        app_module.REQUESTS[hazard_id] = {
+            "id": hazard_id,
+            "user": self.user_id,
+            "name": "Test Resident",
+            "item": "Battery",
+            "method": "pickup",
+            "hazard": 5,
+            "status": "Approved",
+            "latitude": 14.95,
+            "longitude": 120.9,
+            "created_at": "2026-11-20T10:00:00+00:00",
+        }
+        with self.client.session_transaction() as session:
+            session["role"] = "admin"
+
+        nearby_route = self.client.get("/api/admin/pickup-route")
+        self.assertEqual(nearby_route.status_code, 200)
+        self.assertEqual(nearby_route.get_json()["stops"][0]["id"], nearby_id)
+
+        hazard_route = self.client.post(
+            "/api/admin/pickup-route",
+            json={"sort_by": "hazard", "starting_hub": "Batangas City"},
+        )
+        self.assertEqual(hazard_route.status_code, 200)
+        self.assertEqual(
+            [stop["id"] for stop in hazard_route.get_json()["stops"]],
+            [hazard_id, nearby_id],
+        )
+
+        with self.client.session_transaction() as session:
+            session["role"] = "user"
+        resident_requests = self.client.get("/api/my-requests").get_json()
+        hazard_request = next(item for item in resident_requests if item["id"] == hazard_id)
+        self.assertEqual(hazard_request["queue_position"], 1)
+        self.assertIsInstance(hazard_request["eta_minutes"], int)
+        self.assertEqual(hazard_request["dispatch_sort"], "hazard")
 
     def test_request_can_save_default_contact_number(self):
         response = self.client.post(

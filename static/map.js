@@ -3,12 +3,15 @@ const EcoRouteMap = (() => {
   let userMap;
   let hubMap;
   let requestMap;
+  let pickupRouteMap;
+  let pickupRouteLine;
   let userPin;
   let adminPin;
   let requestLocationMarker;
   let userHubMarkers = [];
   let adminHubMarkers = [];
   let requestHubMarkers = [];
+  let pickupRouteMarkers = [];
   const logoUrl = new URL("ecoroute-logo.png", document.currentScript.src).href;
   const hubIcon = L.icon({
     iconUrl: logoUrl,
@@ -154,6 +157,65 @@ const EcoRouteMap = (() => {
     moveTo(requestMap, point, 15, 0.5);
   }
 
+  function initPickupRouteMap() {
+    if (pickupRouteMap) return;
+    pickupRouteMap = createMap("pickupRouteMap");
+    addTiles(pickupRouteMap);
+  }
+
+  function showPickupRoute(route, hubs) {
+    initPickupRouteMap();
+    pickupRouteMarkers.forEach((marker) => marker.remove());
+    pickupRouteMarkers = [];
+    if (pickupRouteLine) pickupRouteLine.remove();
+    pickupRouteLine = null;
+
+    const startHub = hubs.find((hub) => hub.name === route.starting_hub);
+    if (!startHub) return;
+    const start = [startHub.latitude, startHub.longitude];
+    pickupRouteMarkers.push(
+      L.marker(start, { icon: hubIcon, title: startHub.name })
+        .addTo(pickupRouteMap)
+        .bindPopup(`Start: ${popupText(startHub.name)}`),
+    );
+    const points = [start];
+    route.stops.forEach((stop) => {
+      const point = [stop.latitude, stop.longitude];
+      points.push(point);
+      const icon = L.divIcon({
+        className: "pickup-route-marker",
+        html: `<span class="pickup-route-number">${stop.queue_position}</span>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      });
+      const marker = L.marker(point, {
+        icon,
+        title: `Stop ${stop.queue_position}: ${stop.request_number || stop.item}`,
+      }).addTo(pickupRouteMap);
+      marker.bindPopup(
+        `${stop.queue_position}. ${popupText(stop.request_number || stop.item)}`
+        + `<br>${popupText(stop.name)} · Hazard ${stop.hazard}/5`
+        + `<br>ETA ~${stop.eta_minutes} min`,
+      );
+      pickupRouteMarkers.push(marker);
+    });
+
+    if (points.length > 1) {
+      pickupRouteLine = L.polyline(points, {
+        color: "#388e3c",
+        weight: 4,
+        opacity: 0.8,
+        dashArray: "8 8",
+      }).addTo(pickupRouteMap);
+    }
+    pickupRouteMap.invalidateSize({ pan: false });
+    if (points.length > 1) {
+      pickupRouteMap.fitBounds(points, { padding: [24, 24], maxZoom: 12 });
+    } else {
+      moveTo(pickupRouteMap, start, 11, 0.5);
+    }
+  }
+
   function setAdminPin(latitude, longitude, onPin) {
     const point = [latitude, longitude];
     if (!adminPin) {
@@ -178,6 +240,8 @@ const EcoRouteMap = (() => {
     clearUserPin,
     initAdminMap,
     showRequestLocation,
+    initPickupRouteMap,
+    showPickupRoute,
     setAdminPin,
   };
 })();

@@ -64,7 +64,37 @@ def auth_request(endpoint, payload):
     )
     try:
         with urlopen(auth_request_data, timeout=10) as response:
-            return response.status, json.loads(response.read().decode("utf-8"))
+            body = response.read().decode("utf-8")
+            return response.status, json.loads(body) if body else {}
+    except HTTPError as error:
+        try:
+            details = json.loads(error.read().decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as parse_error:
+            raise RuntimeError("Supabase Auth returned an unreadable error") from parse_error
+        message = details.get("msg") or details.get("message") or details.get("error_description")
+        return error.code, {"error": message or "Supabase Auth rejected the request"}
+    except URLError as error:
+        raise RuntimeError("Could not connect to Supabase Auth") from error
+
+
+def auth_update_user(access_token, payload):
+    """Update a Supabase user with the access token from a recovery link."""
+    require_configuration()
+    url = os.environ["SUPABASE_URL"].rstrip("/") + "/auth/v1/user"
+    auth_request_data = Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "apikey": os.environ["SUPABASE_ANON_KEY"],
+            "Authorization": "Bearer " + access_token,
+            "Content-Type": "application/json",
+        },
+        method="PUT",
+    )
+    try:
+        with urlopen(auth_request_data, timeout=10) as response:
+            body = response.read().decode("utf-8")
+            return response.status, json.loads(body) if body else {}
     except HTTPError as error:
         try:
             details = json.loads(error.read().decode("utf-8"))

@@ -140,6 +140,62 @@ def nearest_hub(latitude, longitude, hubs):
         "distance": round(distance_km(latitude, longitude, coordinates[0], coordinates[1]), 2),
     }
 
+
+def build_pickup_route(requests, hubs, settings):
+    """Order approved pickups from a hub and estimate each stop's arrival time."""
+    starting_hub = settings["starting_hub"]
+    current = hubs[starting_hub]
+    remaining = [
+        item for item in requests
+        if item.get("method") == "pickup"
+        and item.get("status") == "Approved"
+        and isinstance(item.get("latitude"), (int, float))
+        and isinstance(item.get("longitude"), (int, float))
+        and -90 <= item["latitude"] <= 90
+        and -180 <= item["longitude"] <= 180
+    ]
+    stops = []
+    elapsed_minutes = 0
+    total_distance = 0.0
+    while remaining:
+        def stop_key(item):
+            distance = distance_km(current[0], current[1], item["latitude"], item["longitude"])
+            if settings["sort_by"] == "hazard":
+                return (-item["hazard"], distance, item.get("created_at", ""))
+            return (distance, -item["hazard"], item.get("created_at", ""))
+
+        next_stop = min(remaining, key=stop_key)
+        remaining.remove(next_stop)
+        leg_distance = distance_km(
+            current[0], current[1], next_stop["latitude"], next_stop["longitude"]
+        )
+        travel_minutes = math.ceil(leg_distance * 1.3 / 30 * 60)
+        elapsed_minutes += travel_minutes
+        total_distance += leg_distance
+        stops.append({
+            "id": next_stop["id"],
+            "request_number": next_stop.get("request_number"),
+            "name": next_stop["name"],
+            "item": next_stop["item"],
+            "hazard": next_stop["hazard"],
+            "latitude": next_stop["latitude"],
+            "longitude": next_stop["longitude"],
+            "queue_position": len(stops) + 1,
+            "eta_minutes": elapsed_minutes,
+            "distance_from_previous_km": round(leg_distance, 2),
+        })
+        elapsed_minutes += 10
+        current = (next_stop["latitude"], next_stop["longitude"])
+
+    return {
+        "sort_by": settings["sort_by"],
+        "starting_hub": starting_hub,
+        "stops": stops,
+        "estimated_total_minutes": elapsed_minutes,
+        "estimated_total_distance_km": round(total_distance, 2),
+    }
+
+
 def road_route(latitude, longitude, destination, hubs):
     """Use OSRM road routing and fall back to geographic distance if offline."""
     destination_latitude, destination_longitude = hubs[destination]

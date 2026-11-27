@@ -824,6 +824,12 @@
       display: block;
     }
 
+    .auth .forgot-password {
+      display: block;
+      margin: 8px 0 0 auto;
+      padding: 4px 0;
+    }
+
     .primary {
       width: 100%;
       margin-top: 22px;
@@ -1806,6 +1812,53 @@
       border: 1px solid var(--line);
     }
 
+    #pickupRouteMap {
+      height: 360px;
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .pickup-dispatch-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+      align-items: end;
+      gap: 14px;
+    }
+
+    .pickup-route-stop {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .pickup-route-stop small {
+      display: block;
+      color: var(--muted);
+    }
+
+    .pickup-route-number {
+      display: inline-grid;
+      width: 26px;
+      height: 26px;
+      margin-right: 8px;
+      place-items: center;
+      border: 2px solid var(--white);
+      border-radius: 50%;
+      background: var(--leaf);
+      color: var(--white);
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 1px 5px #17231f66;
+    }
+
+    .pickup-route-marker {
+      border: 0;
+      background: transparent;
+    }
+
     .hub-logo-marker {
       padding: 3px;
       border: 2px solid var(--leaf);
@@ -2323,6 +2376,10 @@
         grid-template-columns: 1fr;
       }
 
+      .pickup-dispatch-controls {
+        grid-template-columns: 1fr;
+      }
+
       #hubMap {
         height: 280px;
       }
@@ -2426,7 +2483,7 @@
     </section>
 
     <section class="panel">
-      <div class="tabs" role="tablist" aria-label="Account access">
+      <div id="authTabs" class="tabs" role="tablist" aria-label="Account access">
         <button id="loginTab" class="tab active" role="tab" aria-selected="true" aria-controls="loginForm" data-mode="login" tabindex="0">Log in</button>
         <button id="signupTab" class="tab" role="tab" aria-selected="false" aria-controls="signupForm" data-mode="signup" tabindex="-1">Create account</button>
       </div>
@@ -2443,6 +2500,7 @@
           </button>
         </div>
         <button class="primary" type="submit">Log in</button>
+        <button id="forgotPasswordButton" class="quiet forgot-password" type="button">Forgot password?</button>
       </form>
 
       <form id="signupForm" class="hidden" role="tabpanel" aria-labelledby="signupTab" tabindex="0">
@@ -2459,6 +2517,13 @@
           </button>
         </div>
         <button class="primary">Create account</button>
+      </form>
+
+      <form id="resetPasswordForm" class="hidden">
+        <h2>Choose a new password</h2>
+        <label for="resetPassword">New password</label>
+        <input id="resetPassword" type="password" minlength="6" required autocomplete="new-password" placeholder="At least 6 characters">
+        <button class="primary" type="submit">Update password</button>
       </form>
 
       <div id="authError" class="error"></div>
@@ -2702,6 +2767,25 @@
       <div class="grid">
         <section class="panel wide" id="adminQueueSection" data-dashboard-section="adminQueueSection">
           <div class="card-title"><h3>Active request queue</h3><button class="quiet" id="refreshQueue" type="button">Refresh queue</button></div>
+          <div class="pickup-dispatch-panel">
+            <h4>Pickup dispatch route</h4>
+            <p class="hint">Approved pickups only. Choose how stops are ordered and the hub where the route starts. ETA uses 1.3× straight-line distance at 30 km/h plus 10 minutes per earlier stop; map lines show stop order, not road geometry.</p>
+            <form id="pickupDispatchForm" class="pickup-dispatch-controls">
+              <label for="pickupRouteSort">Sort pickups
+                <select id="pickupRouteSort">
+                  <option value="nearest">Nearest stop first</option>
+                  <option value="hazard">Highest hazard first</option>
+                </select>
+              </label>
+              <label for="pickupRouteStart">Starting hub
+                <select id="pickupRouteStart" required></select>
+              </label>
+              <button class="action approve" type="submit">Save dispatch plan</button>
+            </form>
+            <p id="pickupRouteSummary" class="hint" role="status" aria-live="polite"></p>
+            <div id="pickupRouteMap" role="region" aria-label="Map showing the approved pickup route"></div>
+            <div id="pickupRouteStops"></div>
+          </div>
           <div id="adminRequests"></div>
         </section>
         <section class="panel wide" id="adminHistorySection" data-dashboard-section="adminHistorySection">
